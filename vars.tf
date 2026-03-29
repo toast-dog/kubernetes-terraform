@@ -7,7 +7,6 @@ variable "kubeconfig_path" {
 variable "metallb_version" {
   description = "MetalLB Helm chart version"
   type        = string
-  default     = "0.15.3" # renovate: datasource=helm registryUrl=https://metallb.github.io/metallb depName=metallb
 }
 
 variable "metallb_ip_range" {
