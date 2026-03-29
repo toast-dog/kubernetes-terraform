@@ -1,0 +1,27 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dashboard",
+  "assignees": [
+    "mitchellth"
+  ],
+  "labels": [
+    "renovate"
+  ],
+  "configMigration": true,
+  "prHourlyLimit": 0,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/vars\\.tf/"
+      ],
+      "matchStrings": [
+        "default\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*# renovate: datasource=(?<datasource>[^\\s]+)( registryUrl=(?<registryUrl>[^\\s]+))? depName=(?<depName>[^\\s]+)"
+      ]
+    }
+  ]
+}
