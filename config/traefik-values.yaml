@@ -1,0 +1,15 @@
+# service.type defaults to LoadBalancer in this chart version
+# ingressClass.enabled and isDefaultClass both default to true
+service:
+  annotations:
+    metallb.io/loadBalancerIPs: "${load_balancer_ip}"
+
+# Redirect all HTTP traffic to HTTPS
+ports:
+  web:
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true

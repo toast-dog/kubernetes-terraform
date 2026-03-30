@@ -1,6 +1,8 @@
+# Auto-discover helm_release resources in root .tf files
 HELM_TARGETS := $(shell grep -h 'resource "helm_release"' *.tf | \
-    sed 's/.*resource "helm_release" "\([^"]*\)".*/helm_release.\1/' | \
-    sed 's/^/-target=/' | tr '\n' ' ')
+	sed 's/resource "helm_release" "\([^"]*\)".*/\1/' | \
+	sed 's/^/-target=helm_release./' | \
+	tr '\n' ' ')
 
 .PHONY: plan plan-helm apply
 

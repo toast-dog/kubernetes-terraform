@@ -22,6 +22,15 @@
       "matchStrings": [
         "default\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*# renovate: datasource=(?<datasource>[^\\s]+)( registryUrl=(?<registryUrl>[^\\s]+))? depName=(?<depName>[^\\s]+)"
       ]
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/\\.tfvars$/"
+      ],
+      "matchStrings": [
+        "\\w+\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*# renovate: datasource=(?<datasource>[^\\s]+)( registryUrl=(?<registryUrl>[^\\s]+))? depName=(?<depName>[^\\s]+)"
+      ]
     }
   ]
 }

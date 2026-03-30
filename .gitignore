@@ -7,5 +7,8 @@ terraform.tfstate.backup
 *.tfstate.*
 plan
 
+# Secrets
+secrets.auto.tfvars
+
 # Kubeconfig
 kubeconfig
