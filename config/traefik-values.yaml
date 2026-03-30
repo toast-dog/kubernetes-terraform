@@ -4,6 +4,12 @@ service:
   annotations:
     metallb.io/loadBalancerIPs: "${load_balancer_ip}"
 
+# Dashboard IngressRoute is managed as a kubernetes_manifest in traefik.tf
+# to support the two-route pattern required for Authentik forward auth
+ingressRoute:
+  dashboard:
+    enabled: false
+
 # Redirect all HTTP traffic to HTTPS
 ports:
   web:

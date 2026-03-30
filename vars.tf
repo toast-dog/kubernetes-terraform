@@ -63,3 +63,13 @@ variable "traefik_load_balancer_ip" {
   description = "Fixed IP from the MetalLB pool to assign to the Traefik LoadBalancer service"
   type        = string
 }
+
+variable "traefik_dashboard_host" {
+  description = "Hostname for the Traefik dashboard (e.g. traefik.lab.toastdog.net)"
+  type        = string
+}
+
+variable "external_authentik_url" {
+  description = "Base URL of the external Authentik instance (e.g. https://auth.example.com)"
+  type        = string
+}

@@ -9,6 +9,8 @@ acme_email           = "admin@toastdog.net"
 # Traefik
 traefik_version          = "39.0.6"  # renovate: datasource=helm registryUrl=https://traefik.github.io/charts depName=traefik
 traefik_load_balancer_ip = "192.168.30.160"
+traefik_dashboard_host   = "traefik.lab.toastdog.net"
+external_authentik_url            = "https://auth.thompson-manor.com"
 traefik_cert_issuer      = "letsencrypt-staging" # override to letsencrypt-prod in secrets.auto.tfvars once verified
 
 traefik_default_certificate = "lab-wildcard"
