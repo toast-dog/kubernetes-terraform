@@ -16,11 +16,21 @@ Terraform configuration for defining Kubernetes resources. Currently installs Me
 
 ## Usage
 
+On a fresh cluster the MetalLB CRDs don't exist yet, so a two-step apply is required:
+
 ```bash
 terraform init
-terraform plan -out=plan
-terraform apply "plan"
+
+# Step 1: install Helm charts and their CRDs
+make plan-helm
+make apply
+
+# Step 2: apply everything else (IPAddressPool, L2Advertisement)
+make plan
+make apply
 ```
+
+On subsequent runs a single `make plan && make apply` is sufficient.
 
 ## Configuration
 
