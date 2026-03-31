@@ -1,0 +1,11 @@
+global:
+  domain: ${argocd_hostname}
+
+configs:
+  params:
+    # Traefik handles TLS termination; ArgoCD server runs in HTTP mode
+    server.insecure: true
+
+repoServer:
+  livenessProbe:
+    timeoutSeconds: 10

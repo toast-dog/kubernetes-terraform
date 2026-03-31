@@ -73,3 +73,13 @@ variable "external_authentik_url" {
   description = "Base URL of the external Authentik instance (e.g. https://auth.example.com)"
   type        = string
 }
+
+# ArgoCD
+variable "argocd_version" {
+  type = string
+}
+
+variable "argocd_hostname" {
+  description = "Hostname for the ArgoCD UI (e.g. argocd.lab.toastdog.net)"
+  type        = string
+}
