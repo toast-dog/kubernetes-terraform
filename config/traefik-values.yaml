@@ -10,6 +10,12 @@ ingressRoute:
   dashboard:
     enabled: false
 
+# Allow IngressRoutes to reference services in other namespaces
+# Required for Longhorn (longhorn-system), ArgoCD (argocd), and future cross-namespace routes
+providers:
+  kubernetesCRD:
+    allowCrossNamespace: true
+
 # Redirect all HTTP traffic to HTTPS
 ports:
   web:

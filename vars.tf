@@ -83,3 +83,19 @@ variable "argocd_hostname" {
   description = "Hostname for the ArgoCD UI (e.g. argocd.lab.toastdog.net)"
   type        = string
 }
+
+# Longhorn
+variable "longhorn_version" {
+  type = string
+}
+
+variable "longhorn_hostname" {
+  description = "Hostname for the Longhorn UI (e.g. longhorn.lab.toastdog.net)"
+  type        = string
+}
+
+variable "longhorn_replica_count" {
+  description = "Number of Longhorn volume replicas — should match the number of worker nodes"
+  type        = number
+  default     = 3
+}

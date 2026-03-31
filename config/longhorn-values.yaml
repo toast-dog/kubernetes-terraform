@@ -1,0 +1,8 @@
+persistence:
+  defaultClass: true
+  defaultClassReplicaCount: ${longhorn_replica_count}
+
+# Ingress is managed as a kubernetes_manifest IngressRoute in longhorn.tf
+# to use the Traefik CRD pattern consistent with the rest of the repo
+ingress:
+  enabled: false

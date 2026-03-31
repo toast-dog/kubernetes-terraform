@@ -25,3 +25,8 @@ certificates = {
 # ArgoCD
 argocd_version  = "9.4.17"  # renovate: datasource=helm registryUrl=https://argoproj.github.io/argo-helm depName=argo-cd
 argocd_hostname = "argocd.lab.toastdog.net"
+
+# Longhorn
+longhorn_version       = "1.11.1"  # renovate: datasource=helm registryUrl=https://charts.longhorn.io depName=longhorn
+longhorn_hostname      = "longhorn.lab.toastdog.net"
+longhorn_replica_count = 3
