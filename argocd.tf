@@ -12,10 +12,7 @@ resource "helm_release" "argocd" {
   })]
 }
 
-# ArgoCD UI and CLI IngressRoute
-# Placed in the argocd namespace per the official ArgoCD + Traefik docs.
-# Two routes: HTTP UI (priority 10) and gRPC for the CLI (priority 11, h2c scheme).
-# ArgoCD's own authentication protects access; no Authentik middleware needed.
+# Two routes: UI (priority 10) and gRPC CLI (priority 11, h2c) — ArgoCD handles its own auth, no Authentik needed
 resource "kubernetes_manifest" "argocd_ingressroute" {
   depends_on = [helm_release.argocd]
 

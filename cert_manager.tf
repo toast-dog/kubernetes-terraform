@@ -7,9 +7,7 @@ resource "helm_release" "cert_manager" {
   create_namespace = true
   wait             = true
 
-  # Install cert-manager's Custom Resource Definitions (CRDs) — the Kubernetes API extensions
-  # that define resources like Certificate, ClusterIssuer, etc. — as part of the Helm release
-  # so they are managed and upgraded automatically alongside the chart
+  # Install CRDs as part of the Helm release so they upgrade automatically alongside the chart
   set = [
     {
       name  = "crds.enabled"

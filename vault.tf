@@ -1,9 +1,3 @@
-# ---------------------------------------------------------------------------
-# Phase 3: Vault configuration via Vault provider
-# Requires Vault to be initialized and unsealed (Phase 2) before applying.
-# Run: VAULT_TOKEN=<root-token> make plan && make apply
-# ---------------------------------------------------------------------------
-
 # KV v2 secrets engine — all secrets stored under secret/
 resource "vault_mount" "kv" {
   path = "secret"
@@ -15,8 +9,7 @@ resource "vault_auth_backend" "kubernetes" {
   type = "kubernetes"
 }
 
-# Vault runs in-cluster so it can reach the Kubernetes API at the standard internal address.
-# The pod's mounted service account CA cert is used automatically for token validation.
+# Kubernetes API host for token validation — CA cert is auto-discovered from the pod's mounted service account
 resource "vault_kubernetes_auth_backend_config" "default" {
   backend         = vault_auth_backend.kubernetes.path
   kubernetes_host = "https://kubernetes.default.svc.cluster.local:443"
@@ -44,10 +37,6 @@ resource "vault_kubernetes_auth_backend_role" "external_secrets" {
   token_policies                   = [vault_policy.external_secrets.name]
   token_ttl                        = 3600
 }
-
-# ---------------------------------------------------------------------------
-# Phase 1: Vault Helm release and supporting resources
-# ---------------------------------------------------------------------------
 
 resource "helm_release" "vault" {
   name             = "vault"

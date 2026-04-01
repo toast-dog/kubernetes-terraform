@@ -14,9 +14,7 @@ resource "helm_release" "traefik" {
   })]
 }
 
-# One Certificate resource per entry in var.certificates
-# Start with letsencrypt-staging to verify the setup,
-# then switch traefik_cert_issuer to letsencrypt-prod once confirmed working
+# One Certificate per entry in var.certificates — defaults to letsencrypt-staging, override in secrets.auto.tfvars once verified
 resource "kubernetes_manifest" "certificates" {
   for_each   = var.certificates
   depends_on = [helm_release.traefik]
