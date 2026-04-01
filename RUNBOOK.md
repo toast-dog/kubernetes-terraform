@@ -6,20 +6,28 @@ End-to-end process for going from a blank Kubernetes cluster to the current depl
 
 ## What Gets Deployed
 
+### Core
+
 | Component | Namespace | Purpose |
 |-----------|-----------|---------|
 | MetalLB | `metallb-system` | Assigns real IPs from your LAN pool to `LoadBalancer` services |
 | cert-manager | `cert-manager` | Issues and renews TLS certificates via Let's Encrypt (Cloudflare DNS-01) |
 | Traefik | `traefik` | Ingress controller — routes external HTTPS traffic into the cluster |
-| Longhorn | `longhorn-system` | Distributed block storage — provides `ReadWriteOnce` PVCs for stateful workloads |
-| ArgoCD | `argocd` | GitOps controller for declarative app deployments |
+| Longhorn | `longhorn-system` | Distributed block storage — provides persistent volumes for stateful workloads |
 | Vault | `vault` | Secrets management — the single source of truth for all cluster secrets |
 | External Secrets Operator (ESO) | `external-secrets` | Bridges Vault and Kubernetes — reads secrets from Vault, creates native `Secret` objects |
+
+### Additions
+
+| Component | Namespace | Purpose |
+|-----------|-----------|---------|
+| ArgoCD | `argocd` | GitOps controller for declarative app deployments |
 
 ### Why this order matters
 
 - **MetalLB must be first** — Traefik needs a `LoadBalancer` IP to get external traffic in. Without MetalLB that IP never gets assigned.
 - **cert-manager before Traefik** — Traefik's config references cert-manager `Certificate` and `ClusterIssuer` CRDs. The CRDs must exist before Terraform can plan those resources.
+- **Longhorn before Vault** — Vault HA runs 3 pods, each storing its own copy of the Raft database on a PVC. Longhorn provides those PVCs and replicates the underlying data across nodes so a pod restart or node failure doesn't lose the Vault database. Without Longhorn, the Vault pods have nowhere to persist data.
 - **Vault before ESO ClusterSecretStore** — ESO's `ClusterSecretStore` needs to authenticate to Vault. Vault must be running and configured first.
 - **Helm charts before CRD resources** — Helm installs CRDs as part of chart deployment. Resources using those CRDs (IngressRoutes, ClusterIssuers, IPAddressPools, etc.) can't be created until the CRDs exist, which is why a two-step apply is required on a fresh cluster.
 
@@ -149,6 +157,32 @@ kubectl exec -n vault vault-0 -- env VAULT_TOKEN=<root-token> vault status
 # Should show all 3 pods as voters
 kubectl exec -n vault vault-0 -- env VAULT_TOKEN=<root-token> vault operator raft list-peers
 ```
+
+### About the auto-unseal CronJob
+
+The CronJob approach works but has a significant security trade-off: the unseal keys live in a Kubernetes Secret, which means they're stored in etcd (the cluster's backing database) in base64-encoded plaintext. Anyone with access to etcd or sufficient Kubernetes RBAC permissions can read them. This is acceptable for a homelab but would not be appropriate in a production environment.
+
+The fundamental problem is that you're protecting Vault — your secrets manager — using a secret stored in Kubernetes. If the cluster is compromised, both the secrets and the key to unlock the secrets manager are exposed together.
+
+**Proper alternatives**
+
+| Option | How it works | Best for |
+|--------|-------------|----------|
+| **Vault Auto Unseal via cloud KMS** | Vault uses AWS KMS, GCP Cloud KMS, or Azure Key Vault to wrap the master key. On startup Vault calls the KMS API to unwrap it — no human or CronJob involvement. | Environments with a cloud provider |
+| **Vault Auto Unseal via another Vault** | A separate "transit Vault" holds the unseal key for the primary Vault. The primary calls the transit Vault's Transit secrets engine on startup. | Air-gapped or on-prem setups |
+| **HSM (Hardware Security Module)** | The master key never leaves dedicated hardware. Vault calls the HSM to perform the unwrap operation. | High-security on-prem |
+
+For a homelab the most practical upgrade path is **cloud KMS** if you have an AWS/GCP/Azure account, or a **second small Vault instance** (single node, not HA) acting as the transit unsealer.
+
+**General procedure for migrating to auto-unseal**
+
+1. Choose your KMS provider and create a key (e.g. an AWS KMS symmetric key).
+2. Update `vault-values.yaml` to add a `seal` stanza pointing to the KMS key.
+3. While the current Vault is running and unsealed, run `vault operator migrate` — this re-encrypts the master key under the new KMS seal without any downtime or data loss.
+4. Remove the `vault-unseal-keys` Secret and delete the CronJob from `vault.tf`.
+5. Restart the Vault pods — they will unseal automatically by calling KMS on startup.
+
+The `vault operator migrate` step is the key difference from a fresh install: you don't re-initialize, you migrate the existing master key into the new seal mechanism while the data stays intact.
 
 ---
 
