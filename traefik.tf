@@ -1,5 +1,5 @@
 resource "helm_release" "traefik" {
-  depends_on = [helm_release.cert_manager]
+  depends_on = [helm_release.cert_manager, kubernetes_manifest.metallb_ip_pool, kubernetes_manifest.metallb_l2_advertisement]
 
   name             = "traefik"
   repository       = "https://traefik.github.io/charts"

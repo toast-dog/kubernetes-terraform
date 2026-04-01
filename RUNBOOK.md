@@ -33,16 +33,17 @@ End-to-end process for going from a blank Kubernetes cluster to the current depl
 
 ---
 
-## Why Apply Happens in Two Steps
+## Why Apply Happens in Three Steps
 
 On a fresh cluster:
 
-1. `make plan-helm` — targets only `helm_release` resources, installs all charts and their CRDs
-2. `make plan` — plans everything including CRD-backed resources (IngressRoutes, ClusterIssuers, etc.) and Vault provider resources
+1. `terraform apply -target=helm_release.metallb` — MetalLB must go first so its CRDs (`IPAddressPool`, `L2Advertisement`) exist before anything else tries to use them
+2. `terraform apply $(HELM_TARGETS)` — installs all remaining Helm charts and their CRDs (Traefik IngressRoute types, cert-manager ClusterIssuer types, etc.)
+3. `terraform apply` — applies everything else: CRD-backed resources (IngressRoutes, ClusterIssuers, MetalLB pool, etc.) and Vault provider resources
 
-If you tried to do `make plan` from scratch, Terraform would fail because it can't plan resources whose CRD types don't exist yet in the Kubernetes API.
+If you tried to do `make plan` from scratch, Terraform would fail because it validates CRD types against the live cluster at plan time — types that don't exist yet.
 
-The Makefile auto-discovers all `helm_release` resources in `*.tf` files so `plan-helm` always stays up to date without manual maintenance.
+`make plan-init` runs all three steps in sequence. The Makefile auto-discovers all `helm_release` resources in `*.tf` files so the targets stay up to date without manual maintenance.
 
 ---
 
@@ -78,12 +79,13 @@ terraform init
 
 ## Phase 1 — Deploy Helm Charts
 
-Installs all charts and their CRDs. No Vault token needed since only `helm_release` resources are targeted.
+Installs MetalLB first (so its CRDs exist), then all remaining charts. No Vault token needed — only `helm_release` resources are applied in this phase.
 
 ```bash
-make plan-helm
-make apply
+make plan-init
 ```
+
+`plan-init` will stop after the three Helm apply steps. The full apply (Phase 3) requires Vault to be running and unsealed — complete Phase 2 first.
 
 **What gets created:** MetalLB, cert-manager, Traefik, Longhorn, ArgoCD, Vault, and ESO Helm releases. Vault pods will start but remain **sealed** — this is normal. You'll see them at `0/1 Ready`.
 
@@ -190,7 +192,13 @@ The `vault operator migrate` step is the key difference from a fresh install: yo
 
 With Vault running and unsealed, apply everything: CRD-backed resources (IngressRoutes, ClusterIssuers, MetalLB pool, etc.) and Vault provider resources (KV engine, Kubernetes auth, ESO role/policy, ClusterSecretStore).
 
-The Vault provider authenticates using the `VAULT_TOKEN` environment variable.
+The Vault provider authenticates using the `VAULT_TOKEN` environment variable. If you're continuing from `make plan-init`, just run:
+
+```bash
+VAULT_TOKEN=<root-token> terraform apply
+```
+
+For subsequent applies (day-2 operations), use the standard plan+apply flow:
 
 ```bash
 VAULT_TOKEN=<root-token> make plan

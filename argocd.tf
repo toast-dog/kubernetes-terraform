@@ -14,7 +14,7 @@ resource "helm_release" "argocd" {
 
 # Two routes: UI (priority 10) and gRPC CLI (priority 11, h2c) — ArgoCD handles its own auth, no Authentik needed
 resource "kubernetes_manifest" "argocd_ingressroute" {
-  depends_on = [helm_release.argocd]
+  depends_on = [helm_release.argocd, helm_release.traefik]
 
   manifest = {
     apiVersion = "traefik.io/v1alpha1"

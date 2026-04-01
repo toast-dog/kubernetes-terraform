@@ -1,4 +1,6 @@
 resource "helm_release" "external_secrets" {
+  depends_on = [helm_release.vault]
+
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
   chart            = "external-secrets"

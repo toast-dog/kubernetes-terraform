@@ -39,6 +39,8 @@ resource "vault_kubernetes_auth_backend_role" "external_secrets" {
 }
 
 resource "helm_release" "vault" {
+  depends_on = [helm_release.longhorn]
+
   name             = "vault"
   repository       = "https://helm.releases.hashicorp.com"
   chart            = "vault"
@@ -52,7 +54,7 @@ resource "helm_release" "vault" {
 
 # Vault UI IngressRoute — no Authentik, Vault manages its own authentication
 resource "kubernetes_manifest" "vault_ingressroute" {
-  depends_on = [helm_release.vault]
+  depends_on = [helm_release.vault, helm_release.traefik]
 
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
