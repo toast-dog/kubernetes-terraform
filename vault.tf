@@ -1,0 +1,138 @@
+# ---------------------------------------------------------------------------
+# Phase 3: Vault configuration via Vault provider
+# Requires Vault to be initialized and unsealed (Phase 2) before applying.
+# Run: VAULT_TOKEN=<root-token> make plan && make apply
+# ---------------------------------------------------------------------------
+
+# KV v2 secrets engine — all secrets stored under secret/
+resource "vault_mount" "kv" {
+  path = "secret"
+  type = "kv-v2"
+}
+
+# Kubernetes auth method — allows pods to authenticate using their service account tokens
+resource "vault_auth_backend" "kubernetes" {
+  type = "kubernetes"
+}
+
+# Vault runs in-cluster so it can reach the Kubernetes API at the standard internal address.
+# The pod's mounted service account CA cert is used automatically for token validation.
+resource "vault_kubernetes_auth_backend_config" "default" {
+  backend         = vault_auth_backend.kubernetes.path
+  kubernetes_host = "https://kubernetes.default.svc.cluster.local:443"
+}
+
+# Policy granting ESO read-only access to all secrets
+resource "vault_policy" "external_secrets" {
+  name = "external-secrets"
+  policy = <<-EOT
+    path "secret/data/*" {
+      capabilities = ["read"]
+    }
+    path "secret/metadata/*" {
+      capabilities = ["read", "list"]
+    }
+  EOT
+}
+
+# Vault role binding the ESO service account to the policy
+resource "vault_kubernetes_auth_backend_role" "external_secrets" {
+  backend                          = vault_auth_backend.kubernetes.path
+  role_name                        = "external-secrets"
+  bound_service_account_names      = ["external-secrets"]
+  bound_service_account_namespaces = ["external-secrets"]
+  token_policies                   = [vault_policy.external_secrets.name]
+  token_ttl                        = 3600
+}
+
+# ---------------------------------------------------------------------------
+# Phase 1: Vault Helm release and supporting resources
+# ---------------------------------------------------------------------------
+
+resource "helm_release" "vault" {
+  name             = "vault"
+  repository       = "https://helm.releases.hashicorp.com"
+  chart            = "vault"
+  version          = var.vault_version
+  namespace        = "vault"
+  create_namespace = true
+  wait             = false # HA pods start sealed (readiness probe fails) — wait=true would hang
+
+  values = [file("${path.module}/config/vault-values.yaml")]
+}
+
+# Vault UI IngressRoute — no Authentik, Vault manages its own authentication
+resource "kubernetes_manifest" "vault_ingressroute" {
+  depends_on = [helm_release.vault]
+
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "IngressRoute"
+    metadata = {
+      name      = "vault"
+      namespace = "vault"
+    }
+    spec = {
+      entryPoints = ["websecure"]
+      routes = [{
+        kind     = "Rule"
+        match    = "Host(`${var.vault_hostname}`)"
+        priority = 10
+        services = [{
+          name = "vault"
+          port = 8200
+        }]
+      }]
+    }
+  }
+}
+
+# CronJob that checks seal status every minute and unseals all pods if needed.
+# Keys are read from the vault-unseal-keys Secret (created manually after init).
+# Security note: unseal keys live in etcd — acceptable for homelab, not for production.
+resource "kubernetes_manifest" "vault_unseal_cronjob" {
+  depends_on = [helm_release.vault]
+
+  manifest = {
+    apiVersion = "batch/v1"
+    kind       = "CronJob"
+    metadata = {
+      name      = "vault-unseal"
+      namespace = "vault"
+    }
+    spec = {
+      schedule                   = "* * * * *"
+      concurrencyPolicy          = "Forbid"
+      successfulJobsHistoryLimit = 1
+      failedJobsHistoryLimit     = 1
+      jobTemplate = {
+        spec = {
+          template = {
+            spec = {
+              restartPolicy = "OnFailure"
+              containers = [{
+                name  = "vault-unseal"
+                image = "hashicorp/vault:latest"
+                command = ["/bin/sh", "-c", <<-EOT
+                  for pod in vault-0.vault-internal vault-1.vault-internal vault-2.vault-internal; do
+                    export VAULT_ADDR="http://$${pod}:8200"
+                    vault status -format=json 2>/dev/null | grep -q '"sealed":true' || continue
+                    vault operator unseal $UNSEAL_KEY_1
+                    vault operator unseal $UNSEAL_KEY_2
+                    vault operator unseal $UNSEAL_KEY_3
+                  done
+                EOT
+                ]
+                env = [
+                  { name = "UNSEAL_KEY_1", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key1" } } },
+                  { name = "UNSEAL_KEY_2", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key2" } } },
+                  { name = "UNSEAL_KEY_3", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key3" } } },
+                ]
+              }]
+            }
+          }
+        }
+      }
+    }
+  }
+}

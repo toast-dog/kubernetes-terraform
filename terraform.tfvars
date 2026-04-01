@@ -30,3 +30,10 @@ argocd_hostname = "argocd.lab.toastdog.net"
 longhorn_version       = "1.11.1"  # renovate: datasource=helm registryUrl=https://charts.longhorn.io depName=longhorn
 longhorn_hostname      = "longhorn.lab.toastdog.net"
 longhorn_replica_count = 3
+
+# Vault
+vault_version  = "0.32.0"  # renovate: datasource=helm registryUrl=https://helm.releases.hashicorp.com depName=vault
+vault_hostname = "vault.lab.toastdog.net"
+
+# ESO
+external_secrets_version = "2.2.0"  # renovate: datasource=helm registryUrl=https://charts.external-secrets.io depName=external-secrets

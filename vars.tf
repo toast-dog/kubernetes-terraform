@@ -99,3 +99,18 @@ variable "longhorn_replica_count" {
   type        = number
   default     = 3
 }
+
+# Vault
+variable "vault_version" {
+  type = string
+}
+
+variable "vault_hostname" {
+  description = "Hostname for the Vault UI (e.g. vault.lab.toastdog.net)"
+  type        = string
+}
+
+# ESO
+variable "external_secrets_version" {
+  type = string
+}
