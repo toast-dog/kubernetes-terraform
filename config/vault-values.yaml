@@ -26,7 +26,7 @@ server:
 
   dataStorage:
     enabled: true
-    size: 10Gi
+    size: 1Gi
     storageClass: longhorn
 
 injector:
