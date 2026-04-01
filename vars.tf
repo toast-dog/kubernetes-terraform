@@ -4,7 +4,10 @@ variable "kubeconfig_path" {
   default     = "~/.kube/config"
 }
 
+# ---------------------------------------------------------------------------
 # MetalLB
+# ---------------------------------------------------------------------------
+
 variable "metallb_version" {
   type = string
 }
@@ -14,7 +17,10 @@ variable "metallb_ip_range" {
   type        = string
 }
 
+# ---------------------------------------------------------------------------
 # cert-manager
+# ---------------------------------------------------------------------------
+
 variable "cert_manager_version" {
   type = string
 }
@@ -30,9 +36,33 @@ variable "cloudflare_zones" {
   sensitive   = true
 }
 
+# ---------------------------------------------------------------------------
 # Traefik
+# ---------------------------------------------------------------------------
+
 variable "traefik_version" {
   type = string
+}
+
+variable "traefik_load_balancer_ip" {
+  description = "Fixed IP from the MetalLB pool to assign to the Traefik LoadBalancer service"
+  type        = string
+}
+
+variable "traefik_dashboard_host" {
+  description = "Hostname for the Traefik dashboard (e.g. traefik.lab.toastdog.net)"
+  type        = string
+}
+
+variable "external_authentik_url" {
+  description = "Base URL of the external Authentik instance (e.g. https://auth.example.com)"
+  type        = string
+}
+
+variable "traefik_cert_issuer" {
+  description = "ClusterIssuer to use for all certificates (letsencrypt-staging or letsencrypt-prod)"
+  type        = string
+  default     = "letsencrypt-staging"
 }
 
 variable "certificates" {
@@ -53,38 +83,10 @@ variable "traefik_default_certificate" {
   }
 }
 
-variable "traefik_cert_issuer" {
-  description = "ClusterIssuer to use for all certificates (letsencrypt-staging or letsencrypt-prod)"
-  type        = string
-  default     = "letsencrypt-staging"
-}
-
-variable "traefik_load_balancer_ip" {
-  description = "Fixed IP from the MetalLB pool to assign to the Traefik LoadBalancer service"
-  type        = string
-}
-
-variable "traefik_dashboard_host" {
-  description = "Hostname for the Traefik dashboard (e.g. traefik.lab.toastdog.net)"
-  type        = string
-}
-
-variable "external_authentik_url" {
-  description = "Base URL of the external Authentik instance (e.g. https://auth.example.com)"
-  type        = string
-}
-
-# ArgoCD
-variable "argocd_version" {
-  type = string
-}
-
-variable "argocd_hostname" {
-  description = "Hostname for the ArgoCD UI (e.g. argocd.lab.toastdog.net)"
-  type        = string
-}
-
+# ---------------------------------------------------------------------------
 # Longhorn
+# ---------------------------------------------------------------------------
+
 variable "longhorn_version" {
   type = string
 }
@@ -100,7 +102,10 @@ variable "longhorn_replica_count" {
   default     = 3
 }
 
+# ---------------------------------------------------------------------------
 # Vault
+# ---------------------------------------------------------------------------
+
 variable "vault_version" {
   type = string
 }
@@ -110,7 +115,23 @@ variable "vault_hostname" {
   type        = string
 }
 
-# ESO
+# ---------------------------------------------------------------------------
+# External Secrets Operator
+# ---------------------------------------------------------------------------
+
 variable "external_secrets_version" {
   type = string
+}
+
+# ---------------------------------------------------------------------------
+# ArgoCD
+# ---------------------------------------------------------------------------
+
+variable "argocd_version" {
+  type = string
+}
+
+variable "argocd_hostname" {
+  description = "Hostname for the ArgoCD UI (e.g. argocd.lab.toastdog.net)"
+  type        = string
 }
