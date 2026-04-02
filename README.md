@@ -41,18 +41,23 @@ cloudflare_zones = {
 ```bash
 terraform init
 
-# Step 1: install Helm charts and their CRDs
-make plan-helm
-make apply
+# Fresh cluster bootstrap — applies MetalLB, then all Helm charts, then everything (prompts once for confirmation)
+make plan-init
 
-# Step 2: initialize and unseal Vault manually (see RUNBOOK.md)
+# After plan-init: initialize and unseal Vault manually (see RUNBOOK.md Phase 2)
 
-# Step 3: apply everything else
+# Complete the full apply with Vault token
+VAULT_TOKEN=<root-token> terraform apply
+```
+
+On subsequent runs:
+
+```bash
 VAULT_TOKEN=<root-token> make plan
 VAULT_TOKEN=<root-token> make apply
 ```
 
-On subsequent runs a single `make plan && make apply` is sufficient (with `VAULT_TOKEN` set).
+**Tip:** use the 1Password CLI to avoid pasting the token — see RUNBOOK.md Phase 3 for alias setup.
 
 ## Adding a new component
 
