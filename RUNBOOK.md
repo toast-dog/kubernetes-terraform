@@ -205,6 +205,20 @@ VAULT_TOKEN=<root-token> make plan
 VAULT_TOKEN=<root-token> make apply
 ```
 
+**Tip: use 1Password CLI to avoid pasting the token manually.** If you have `op` installed and a 1Password environment set up with `VAULT_TOKEN`, you can export it inline:
+
+```bash
+export $(op environment read <environment-id>) && make plan
+export $(op environment read <environment-id>) && make apply
+```
+
+For convenience, add aliases to `~/.bashrc`:
+
+```bash
+alias tfplan='export $(op environment read <environment-id>) && make plan'
+alias tfapply='export $(op environment read <environment-id>) && make apply'
+```
+
 **What gets created:**
 - MetalLB `IPAddressPool` and `L2Advertisement`
 - cert-manager `ClusterIssuer` (staging + prod) and `Certificate` resources
