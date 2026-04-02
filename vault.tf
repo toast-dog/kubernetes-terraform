@@ -107,7 +107,7 @@ resource "kubernetes_manifest" "vault_unseal_cronjob" {
                 command = ["/bin/sh", "-c", <<-EOT
                   for pod in vault-0.vault-internal vault-1.vault-internal vault-2.vault-internal; do
                     export VAULT_ADDR="http://$${pod}:8200"
-                    vault status -format=json 2>/dev/null | grep -q '"sealed":true' || continue
+                    vault status -format=json 2>/dev/null | grep -q '"sealed": true' || continue
                     vault operator unseal $UNSEAL_KEY_1
                     vault operator unseal $UNSEAL_KEY_2
                     vault operator unseal $UNSEAL_KEY_3
