@@ -101,9 +101,23 @@ resource "kubernetes_manifest" "vault_unseal_cronjob" {
           template = {
             spec = {
               restartPolicy = "OnFailure"
+              securityContext = {
+                runAsNonRoot = true               # reject pod at admission if image runs as uid 0
+                seccompProfile = {
+                  type = "RuntimeDefault"         # apply runtime's default syscall allowlist (blocks ptrace, mount, etc.)
+                }
+              }
               containers = [{
                 name  = "vault-unseal"
                 image = "hashicorp/vault:${var.vault_image_tag}"
+                securityContext = {
+                  allowPrivilegeEscalation = false # prevent gaining privileges beyond the parent process
+                  readOnlyRootFilesystem   = true  # safe here — vault CLI only makes HTTP calls, no disk writes needed
+                  runAsNonRoot             = true  # vault image runs as uid 100 (vault user) by default
+                  capabilities = {
+                    drop = ["ALL"]                 # vault operator unseal needs no Linux capabilities
+                  }
+                }
                 command = ["/bin/sh", "-c", <<-EOT
                   for pod in vault-0.vault-internal vault-1.vault-internal vault-2.vault-internal; do
                     export VAULT_ADDR="http://$${pod}:8200"
