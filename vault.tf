@@ -103,7 +103,7 @@ resource "kubernetes_manifest" "vault_unseal_cronjob" {
               restartPolicy = "OnFailure"
               containers = [{
                 name  = "vault-unseal"
-                image = "hashicorp/vault:latest"
+                image = "hashicorp/vault:${var.vault_image_tag}"
                 command = ["/bin/sh", "-c", <<-EOT
                   for pod in vault-0.vault-internal vault-1.vault-internal vault-2.vault-internal; do
                     export VAULT_ADDR="http://$${pod}:8200"

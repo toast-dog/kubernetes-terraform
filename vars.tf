@@ -110,6 +110,11 @@ variable "vault_version" {
   type = string
 }
 
+variable "vault_image_tag" {
+  description = "Vault container image tag for the unseal CronJob — should match the app version deployed by the Helm chart"
+  type        = string
+}
+
 variable "vault_hostname" {
   description = "Hostname for the Vault UI (e.g. vault.lab.toastdog.net)"
   type        = string
