@@ -113,7 +113,8 @@ resource "kubernetes_manifest" "vault_unseal_cronjob" {
                 securityContext = {
                   allowPrivilegeEscalation = false # prevent gaining privileges beyond the parent process
                   readOnlyRootFilesystem   = true  # safe here — vault CLI only makes HTTP calls, no disk writes needed
-                  runAsNonRoot             = true  # vault image runs as uid 100 (vault user) by default
+                  runAsNonRoot             = true  # enforced by runAsUser below
+                  runAsUser                = 100   # vault user (uid 100) — image default is root, must be explicit
                   capabilities = {
                     drop = ["ALL"]                 # vault operator unseal needs no Linux capabilities
                   }
