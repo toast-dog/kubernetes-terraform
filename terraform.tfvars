@@ -20,7 +20,7 @@ traefik_version          = "39.0.6"  # renovate: datasource=helm registryUrl=htt
 traefik_load_balancer_ip = "192.168.30.160"
 traefik_dashboard_host   = "traefik.lab.toastdog.net"
 external_authentik_url   = "https://auth.thompson-manor.com"
-traefik_cert_issuer      = "letsencrypt-prod"
+traefik_cert_issuer = "letsencrypt-prod"
 traefik_default_certificate = "lab-wildcard"
 
 certificates = {

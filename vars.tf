@@ -62,7 +62,6 @@ variable "external_authentik_url" {
 variable "traefik_cert_issuer" {
   description = "ClusterIssuer to use for all certificates (letsencrypt-staging or letsencrypt-prod)"
   type        = string
-  default     = "letsencrypt-staging"
 }
 
 variable "certificates" {
