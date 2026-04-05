@@ -53,6 +53,12 @@ vault_hostname   = "vault.lab.toastdog.net"
 external_secrets_version = "2.2.0"  # renovate: datasource=helm registryUrl=https://charts.external-secrets.io depName=external-secrets
 
 # ---------------------------------------------------------------------------
+# Network policies
+# ---------------------------------------------------------------------------
+
+control_plane_ips = ["192.168.30.150"]
+
+# ---------------------------------------------------------------------------
 # ArgoCD
 # ---------------------------------------------------------------------------
 

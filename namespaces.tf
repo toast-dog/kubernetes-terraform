@@ -20,6 +20,7 @@ resource "kubernetes_labels" "namespace_vault" {
   labels = {
     "pod-security.kubernetes.io/enforce" = "baseline"
     "pod-security.kubernetes.io/warn"    = "baseline"
+    "network-policy"                     = "managed"
   }
 }
 
@@ -34,6 +35,7 @@ resource "kubernetes_labels" "namespace_cert_manager" {
   labels = {
     "pod-security.kubernetes.io/enforce" = "restricted"
     "pod-security.kubernetes.io/warn"    = "restricted"
+    "network-policy"                     = "managed"
   }
 }
 
@@ -48,6 +50,7 @@ resource "kubernetes_labels" "namespace_external_secrets" {
   labels = {
     "pod-security.kubernetes.io/enforce" = "restricted"
     "pod-security.kubernetes.io/warn"    = "restricted"
+    "network-policy"                     = "managed"
   }
 }
 
@@ -62,6 +65,7 @@ resource "kubernetes_labels" "namespace_argocd" {
   labels = {
     "pod-security.kubernetes.io/enforce" = "restricted"
     "pod-security.kubernetes.io/warn"    = "restricted"
+    "network-policy"                     = "managed"
   }
 }
 
@@ -77,6 +81,7 @@ resource "kubernetes_labels" "namespace_traefik" {
   labels = {
     "pod-security.kubernetes.io/enforce" = "restricted"
     "pod-security.kubernetes.io/warn"    = "restricted"
+    "network-policy"                     = "managed"
   }
 }
 
@@ -91,11 +96,15 @@ resource "kubernetes_labels" "namespace_metallb" {
   labels = {
     "pod-security.kubernetes.io/enforce" = "privileged"
     "pod-security.kubernetes.io/warn"    = "privileged"
+    "network-policy"                     = "managed"
   }
 }
 
 # privileged — Longhorn engine and instance-manager DaemonSets require privileged containers
-# for block device management; this is an upstream requirement, not configurable
+# for block device management; this is an upstream requirement, not configurable.
+# network-policy=managed is intentionally omitted — Longhorn's attachdetach-controller
+# originates from the control plane host network (outside pod network) and cannot be
+# governed by NetworkPolicies. Restricting Longhorn causes volume attach failures on startup.
 resource "kubernetes_labels" "namespace_longhorn" {
   depends_on  = [helm_release.longhorn]
   api_version = "v1"

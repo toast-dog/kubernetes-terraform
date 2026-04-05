@@ -129,6 +129,15 @@ variable "external_secrets_version" {
 }
 
 # ---------------------------------------------------------------------------
+# Network policies
+# ---------------------------------------------------------------------------
+
+variable "control_plane_ips" {
+  description = "List of control plane node IPs — used in NetworkPolicy egress rules to allow API server access (post-DNAT, Calico sees the node IP:6443 rather than the kubernetes ClusterIP:443)"
+  type        = list(string)
+}
+
+# ---------------------------------------------------------------------------
 # ArgoCD
 # ---------------------------------------------------------------------------
 
