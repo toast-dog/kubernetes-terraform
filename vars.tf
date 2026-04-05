@@ -136,6 +136,21 @@ variable "control_plane_ips" {
   type        = list(string)
 }
 
+variable "cluster_cidr" {
+  description = "Pod CIDR for the cluster — used in webhook ingress rules. Webhook calls originate from the kube-apiserver via Calico IPIP; the source IP at the destination pod is the control plane's tunl0 address (within the pod CIDR), not the node IP."
+  type        = string
+}
+
+# ---------------------------------------------------------------------------
+# External Secrets — per-namespace SecretStores
+# ---------------------------------------------------------------------------
+
+variable "vault_secret_stores" {
+  description = "Namespaces to provision with a scoped Vault policy, Kubernetes auth role, vault-auth service account, and SecretStore. Each entry gets read access to secret/data/<name>/* only."
+  type        = list(string)
+  default     = []
+}
+
 # ---------------------------------------------------------------------------
 # ArgoCD
 # ---------------------------------------------------------------------------

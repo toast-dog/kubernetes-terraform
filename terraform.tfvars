@@ -57,6 +57,17 @@ external_secrets_version = "2.2.0"  # renovate: datasource=helm registryUrl=http
 # ---------------------------------------------------------------------------
 
 control_plane_ips = ["192.168.30.150"]
+cluster_cidr      = "10.244.0.0/16"
+
+# ---------------------------------------------------------------------------
+# External Secrets — per-namespace SecretStores
+# ---------------------------------------------------------------------------
+
+# Add a namespace here to provision it with a scoped Vault policy, Kubernetes
+# auth role, vault-auth service account, and SecretStore. The namespace must
+# already exist (created by a Helm release or ArgoCD) before applying.
+# ExternalSecrets in that namespace reference: kind: SecretStore, name: vault
+vault_secret_stores = []
 
 # ---------------------------------------------------------------------------
 # ArgoCD

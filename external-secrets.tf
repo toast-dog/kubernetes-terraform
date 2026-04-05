@@ -10,16 +10,32 @@ resource "helm_release" "external_secrets" {
   wait             = true
 }
 
-# ClusterSecretStore — available to ExternalSecret resources in any namespace.
-# Connects to Vault via internal cluster DNS using Kubernetes auth.
-resource "kubernetes_manifest" "vault_cluster_secret_store" {
-  depends_on = [helm_release.external_secrets]
+# Per-namespace vault-auth service accounts — ESO uses the TokenRequest API to
+# generate short-lived tokens for these SAs. Each SA can only authenticate to
+# Vault with its namespace-scoped role (secret/data/<namespace>/* only).
+# The namespace must already exist before applying (created by Helm or ArgoCD).
+resource "kubernetes_service_account_v1" "vault_auth" {
+  for_each = toset(var.vault_secret_stores)
+
+  metadata {
+    name      = "vault-auth"
+    namespace = each.key
+  }
+}
+
+# Per-namespace SecretStores — namespace-scoped, so an ExternalSecret in one
+# namespace cannot reference another namespace's store. References the local
+# vault-auth SA; no cross-namespace credential sharing.
+resource "kubernetes_manifest" "vault_secret_store" {
+  for_each   = toset(var.vault_secret_stores)
+  depends_on = [helm_release.external_secrets, kubernetes_service_account_v1.vault_auth]
 
   manifest = {
     apiVersion = "external-secrets.io/v1"
-    kind       = "ClusterSecretStore"
+    kind       = "SecretStore"
     metadata = {
-      name = "vault"
+      name      = "vault"
+      namespace = each.key
     }
     spec = {
       provider = {
@@ -30,10 +46,9 @@ resource "kubernetes_manifest" "vault_cluster_secret_store" {
           auth = {
             kubernetes = {
               mountPath = "kubernetes"
-              role      = "external-secrets"
+              role      = "secret-store-${each.key}"
               serviceAccountRef = {
-                name      = "external-secrets"
-                namespace = "external-secrets"
+                name = "vault-auth"
               }
             }
           }

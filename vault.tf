@@ -15,26 +15,31 @@ resource "vault_kubernetes_auth_backend_config" "default" {
   kubernetes_host = "https://kubernetes.default.svc.cluster.local:443"
 }
 
-# Policy granting ESO read-only access to all secrets
-resource "vault_policy" "external_secrets" {
-  name = "external-secrets"
-  policy = <<-EOT
-    path "secret/data/*" {
+# Per-namespace Vault policies — each grants read access only to that namespace's secret path.
+# Driven by var.vault_secret_stores; add a namespace there to provision it automatically.
+resource "vault_policy" "secret_store" {
+  for_each = toset(var.vault_secret_stores)
+  name     = "secret-store-${each.key}"
+  policy   = <<-EOT
+    path "secret/data/${each.key}/*" {
       capabilities = ["read"]
     }
-    path "secret/metadata/*" {
+    path "secret/metadata/${each.key}/*" {
       capabilities = ["read", "list"]
     }
   EOT
 }
 
-# Vault role binding the ESO service account to the policy
-resource "vault_kubernetes_auth_backend_role" "external_secrets" {
+# Per-namespace Vault auth roles — each binds to the vault-auth service account
+# in the app namespace. ESO uses the TokenRequest API to generate short-lived
+# tokens for that SA, so the central ESO service account never touches Vault directly.
+resource "vault_kubernetes_auth_backend_role" "secret_store" {
+  for_each                         = toset(var.vault_secret_stores)
   backend                          = vault_auth_backend.kubernetes.path
-  role_name                        = "external-secrets"
-  bound_service_account_names      = ["external-secrets"]
-  bound_service_account_namespaces = ["external-secrets"]
-  token_policies                   = [vault_policy.external_secrets.name]
+  role_name                        = "secret-store-${each.key}"
+  bound_service_account_names      = ["vault-auth"]
+  bound_service_account_namespaces = [each.key]
+  token_policies                   = [vault_policy.secret_store[each.key].name]
   token_ttl                        = 3600
 }
 

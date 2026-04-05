@@ -13,9 +13,18 @@
 # Calico (the cluster CNI) enforces these rules at the node level using iptables.
 #
 # Cluster addressing (referenced in ipBlock rules below):
-#   Pod CIDR:     10.244.0.0/16
+#   Pod CIDR:     var.cluster_cidr  (10.244.0.0/16)
 #   Service CIDR: 10.96.0.0/12  — kubernetes API reachable at 10.96.0.1:443
-#   Node CIDR:    192.168.30.0/24 — API server on .150; calls webhook pods from host IP
+#   Node CIDR:    192.168.30.0/24 — control plane on .150
+#
+# Webhook ingress note:
+#   kube-apiserver uses hostNetwork and calls webhook pods via Calico IPIP tunnels.
+#   By the time the packet arrives at the destination pod, the source IP is the
+#   control plane's tunl0 address (within the pod CIDR), not the node IP.
+#   ipBlock with namespaceSelector cannot match hostNetwork pods. Using cluster_cidr
+#   as the ipBlock source is the correct approach — a secondary defense is that
+#   webhook servers require valid kube-apiserver TLS client certs, so network
+#   access alone is not sufficient to make a valid webhook call.
 
 # ===========================================================================
 # DNS EGRESS — single GlobalNetworkPolicy for all managed namespaces
@@ -81,7 +90,7 @@ resource "kubernetes_manifest" "global_default_deny" {
 #
 # Inbound port 8200: external-secrets (secret reads), traefik (UI), vault namespace (unseal)
 # Inbound port 8201: vault namespace only (raft replication between vault-0/1/2)
-# Outbound port 443: kubernetes API (vault k8s auth method validates pod service account tokens)
+# Outbound port 6443: kubernetes API (vault k8s auth method validates pod service account tokens)
 # ===========================================================================
 
 # Allows vault pods to talk to each other (raft replication on 8201) and the
@@ -149,15 +158,15 @@ resource "kubernetes_manifest" "netpol_vault_allow_egress_k8s_api" {
 # ===========================================================================
 # EXTERNAL-SECRETS
 #
-# Inbound port 443: node CIDR (API server calls the ESO webhook from its host IP
-#                   to validate ExternalSecret resources at admission time)
+# Inbound port 10250: kube-apiserver webhook calls (ExternalSecret/SecretStore validation)
 # Outbound port 8200: vault (reading secrets)
-# Outbound port 443:  kubernetes API (creating/updating Kubernetes Secrets)
+# Outbound port 6443: kubernetes API (creating/updating Kubernetes Secrets)
+#
+# Webhook note: ipBlock cidr = cluster_cidr because kube-apiserver webhook calls
+# traverse Calico IPIP — the source IP at the pod is the control plane tunl0
+# address (within pod CIDR), not the node IP. See file header for full explanation.
 # ===========================================================================
 
-# ESO registers a validating webhook — the API server calls it from its host IP
-# whenever an ExternalSecret is created/modified. ipBlock required (not namespaceSelector)
-# because the call originates from the node host network, not a pod.
 resource "kubernetes_manifest" "netpol_external_secrets_allow_ingress_webhook" {
   depends_on = [helm_release.external_secrets]
   manifest = {
@@ -168,7 +177,7 @@ resource "kubernetes_manifest" "netpol_external_secrets_allow_ingress_webhook" {
       podSelector = {}
       policyTypes = ["Ingress"]
       ingress = [{
-        from  = [{ ipBlock = { cidr = "192.168.30.0/24" } }] # node CIDR — API server calls webhook from host IP
+        from  = [{ ipBlock = { cidr = var.cluster_cidr } }]
         ports = [{ port = 10250, protocol = "TCP" }]
       }]
     }
@@ -217,17 +226,15 @@ resource "kubernetes_manifest" "netpol_external_secrets_allow_egress_k8s_api" {
 # ===========================================================================
 # CERT-MANAGER
 #
-# Inbound port 443: node CIDR (API server calls cert-manager webhook from host IP
-#                   to validate Certificate/Issuer resources at admission time)
-# Outbound port 443: kubernetes API (managing certificate secrets) +
-#                    internet (Let's Encrypt ACME API, Cloudflare DNS API for DNS-01)
+# Inbound port 10250: kube-apiserver webhook calls (Certificate/Issuer validation)
+# Outbound port 6443: kubernetes API (managing certificate secrets)
+# Outbound port 443:  internet (Let's Encrypt ACME API, Cloudflare DNS API for DNS-01)
 #
+# Webhook note: same IPIP/tunl0 reason as external-secrets above.
 # The external egress rule explicitly excludes internal CIDRs so cert-manager
 # cannot reach cluster-internal services through the broad external rule.
 # ===========================================================================
 
-# cert-manager registers webhooks for Certificate/Issuer resources — the API server
-# calls them from its host IP to validate those resources at admission time.
 resource "kubernetes_manifest" "netpol_cert_manager_allow_ingress_webhook" {
   depends_on = [helm_release.cert_manager]
   manifest = {
@@ -238,15 +245,13 @@ resource "kubernetes_manifest" "netpol_cert_manager_allow_ingress_webhook" {
       podSelector = {}
       policyTypes = ["Ingress"]
       ingress = [{
-        from  = [{ ipBlock = { cidr = "192.168.30.0/24" } }]
+        from  = [{ ipBlock = { cidr = var.cluster_cidr } }]
         ports = [{ port = 10250, protocol = "TCP" }]
       }]
     }
   }
 }
 
-# cert-manager writes issued TLS certs into Kubernetes Secrets and watches
-# Certificate/CertificateRequest resources via a long-lived API server watch. Calico evaluates egress post-DNAT.
 resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_k8s_api" {
   depends_on = [helm_release.cert_manager]
   manifest = {
@@ -280,9 +285,9 @@ resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_external" {
           ipBlock = {
             cidr = "0.0.0.0/0"
             except = [
-              "10.244.0.0/16", # pod CIDR — cert-manager shouldn't reach pods via external rule
-              "10.96.0.0/12",  # service CIDR — covered by the k8s-api rule above
-              "192.168.0.0/16" # RFC1918 LAN
+              var.cluster_cidr,   # pod CIDR — cert-manager shouldn't reach pods via external rule
+              "10.96.0.0/12",     # service CIDR — covered by the k8s-api rule above
+              "192.168.0.0/16"    # RFC1918 LAN
             ]
           }
         }]
@@ -295,11 +300,11 @@ resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_external" {
 # ===========================================================================
 # TRAEFIK
 #
-# Inbound ports 80/443: anywhere (it is the public ingress — must accept external traffic)
-# Outbound to cluster:  pod CIDR + service CIDR, all ports — Traefik routes to arbitrary
-#                       backends and resolves service endpoints directly to pod IPs;
-#                       per-namespace ingress policies control what is actually accepted
-# Outbound port 443:    internet only (Authentik ForwardAuth at auth.thompson-manor.com)
+# Inbound ports 8000/8443: anywhere (it is the public ingress — must accept external traffic)
+# Outbound to cluster:     pod CIDR + service CIDR, all ports — Traefik routes to arbitrary
+#                          backends and resolves service endpoints directly to pod IPs;
+#                          per-namespace ingress policies control what is actually accepted
+# Outbound port 443:       internet only (Authentik ForwardAuth at auth.thompson-manor.com)
 # ===========================================================================
 
 resource "kubernetes_manifest" "netpol_traefik_allow_ingress_public" {
@@ -351,8 +356,8 @@ resource "kubernetes_manifest" "netpol_traefik_allow_egress_cluster" {
         # No port restriction — Traefik is the ingress controller and routes to backends
         # on varying ports. Each destination namespace enforces its own ingress policy.
         to = [
-          { ipBlock = { cidr = "10.244.0.0/16" } }, # pod CIDR
-          { ipBlock = { cidr = "10.96.0.0/12" } }   # service CIDR
+          { ipBlock = { cidr = var.cluster_cidr } }, # pod CIDR
+          { ipBlock = { cidr = "10.96.0.0/12" } }    # service CIDR
         ]
       }]
     }
@@ -373,9 +378,9 @@ resource "kubernetes_manifest" "netpol_traefik_allow_egress_external" {
           ipBlock = {
             cidr = "0.0.0.0/0"
             except = [
-              "10.244.0.0/16", # pod CIDR — covered by the cluster-backends rule
-              "10.96.0.0/12",  # service CIDR — covered by the cluster-backends rule
-              "192.168.0.0/16" # RFC1918 LAN
+              var.cluster_cidr,  # pod CIDR — covered by the cluster-backends rule
+              "10.96.0.0/12",    # service CIDR — covered by the cluster-backends rule
+              "192.168.0.0/16"   # RFC1918 LAN
             ]
           }
         }]
@@ -388,10 +393,12 @@ resource "kubernetes_manifest" "netpol_traefik_allow_egress_external" {
 # ===========================================================================
 # ARGOCD
 #
-# Inbound ports 80/443: traefik only (UI + gRPC CLI access via ingress)
-# Outbound internal:    all traffic within argocd namespace — server, redis, repo-server,
-#                       dex, and controllers all communicate extensively with each other
-# Outbound port 443:    kubernetes API (deploying resources) + external git (GitHub etc.)
+# Inbound ports 8080: traefik only (UI + gRPC CLI access via ingress)
+# Outbound internal:  all traffic within argocd namespace — server, redis, repo-server,
+#                     dex, and controllers all communicate extensively with each other
+# Outbound port 6443: kubernetes API (deploying resources)
+# Outbound port 443:  external git (Forgejo at git.thompson-manor.org) + OIDC
+# Outbound port 22:   git over SSH
 # ===========================================================================
 
 # Scoped to argocd-server only — redis, repo-server, dex, and controllers have
@@ -465,14 +472,14 @@ resource "kubernetes_manifest" "netpol_argocd_allow_egress_external" {
           ipBlock = {
             cidr = "0.0.0.0/0"
             except = [
-              "10.244.0.0/16",
+              var.cluster_cidr,
               "10.96.0.0/12",
               "192.168.0.0/16"
             ]
           }
         }]
         ports = [
-          { port = 443, protocol = "TCP" }, # git repos (GitHub, etc.) + OIDC
+          { port = 443, protocol = "TCP" }, # git repos + OIDC
           { port = 22, protocol = "TCP" }   # git over SSH
         ]
       }]
@@ -489,12 +496,12 @@ resource "kubernetes_manifest" "netpol_argocd_allow_egress_external" {
 # L2 ARP advertisement traffic is not affected by these policies.
 #
 # The controller pod (not the speaker) runs on the pod network and needs:
-# Inbound port 443:  node CIDR (API server calls MetalLB validating webhook)
-# Outbound port 443: kubernetes API (watching services, updating status)
+# Inbound port 9443:  kube-apiserver webhook calls (IPAddressPool/L2Advertisement validation)
+# Outbound port 6443: kubernetes API (watching services, updating status)
+#
+# Webhook note: same IPIP/tunl0 reason as external-secrets above.
 # ===========================================================================
 
-# MetalLB registers a validating webhook for IPAddressPool and L2Advertisement resources.
-# API server calls it from the node host IP, so ipBlock is required over namespaceSelector.
 resource "kubernetes_manifest" "netpol_metallb_allow_ingress_webhook" {
   depends_on = [helm_release.metallb]
   manifest = {
@@ -505,7 +512,7 @@ resource "kubernetes_manifest" "netpol_metallb_allow_ingress_webhook" {
       podSelector = {}
       policyTypes = ["Ingress"]
       ingress = [{
-        from  = [{ ipBlock = { cidr = "192.168.30.0/24" } }]
+        from  = [{ ipBlock = { cidr = var.cluster_cidr } }]
         ports = [{ port = 9443, protocol = "TCP" }]
       }]
     }
