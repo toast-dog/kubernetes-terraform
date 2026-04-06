@@ -1,12 +1,15 @@
 SHELL := /bin/bash
 
-.PHONY: plan apply bootstrap bootstrap-vault
+.PHONY: plan apply upgrade bootstrap bootstrap-vault
 
 plan:  ## Plan all modules and save plan files
 	terragrunt run --all plan -- -out=tfplan
 
 apply:  ## Apply saved plan files (run plan first)
 	terragrunt run --all apply -- tfplan
+
+upgrade:  ## Upgrade all provider lock files after version bumps (run before plan)
+	terragrunt run --all init -- -upgrade
 
 bootstrap:  ## Fresh cluster bootstrap
 	@read -p "WARNING: Fresh cluster bootstrap. Type 'yes' to continue: " confirm && [ "$$confirm" = "yes" ]
