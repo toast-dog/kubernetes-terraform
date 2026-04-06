@@ -31,6 +31,26 @@
       "matchStrings": [
         "\\w+\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*# renovate: datasource=(?<datasource>[^\\s]+)( registryUrl=(?<registryUrl>[^\\s]+))? depName=(?<depName>[^\\s]+)"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Terraform provider versions in root terragrunt.hcl generate block",
+      "managerFilePatterns": [
+        "/terragrunt\\.hcl$/"
+      ],
+      "matchStrings": [
+        "version\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*# renovate: datasource=(?<datasource>[^\\s]+)( depName=(?<depName>[^\\s]+))?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Terraform provider versions in providers.tf files (vault provider)",
+      "managerFilePatterns": [
+        "/providers\\.tf$/"
+      ],
+      "matchStrings": [
+        "version\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*# renovate: datasource=(?<datasource>[^\\s]+)( depName=(?<depName>[^\\s]+))?"
+      ]
     }
   ]
 }

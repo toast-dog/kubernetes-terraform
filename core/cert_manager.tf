@@ -1,25 +1,8 @@
-resource "helm_release" "cert_manager" {
-  name             = "cert-manager"
-  repository       = "oci://quay.io/jetstack/charts"
-  chart            = "cert-manager"
-  version          = var.cert_manager_version
-  namespace        = "cert-manager"
-  create_namespace = true
-  wait             = true
-
-  # Install CRDs as part of the Helm release so they upgrade automatically alongside the chart
-  set = [
-    {
-      name  = "crds.enabled"
-      value = "true"
-    }
-  ]
-}
+# Helm release is in core-helm/ — CRDs and namespace are guaranteed to exist when this module runs.
 
 # One secret per Cloudflare zone, named cloudflare-token-<zone> (dots replaced with dashes)
 resource "kubernetes_secret_v1" "cloudflare_api_tokens" {
-  for_each   = toset(nonsensitive(keys(var.cloudflare_zones)))
-  depends_on = [helm_release.cert_manager]
+  for_each = toset(nonsensitive(keys(var.cloudflare_zones)))
 
   metadata {
     name      = "cloudflare-token-${replace(each.key, ".", "-")}"
@@ -32,7 +15,7 @@ resource "kubernetes_secret_v1" "cloudflare_api_tokens" {
 }
 
 resource "kubernetes_manifest" "cluster_issuer_staging" {
-  depends_on = [helm_release.cert_manager, kubernetes_secret_v1.cloudflare_api_tokens]
+  depends_on = [kubernetes_secret_v1.cloudflare_api_tokens]
 
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -66,7 +49,7 @@ resource "kubernetes_manifest" "cluster_issuer_staging" {
 }
 
 resource "kubernetes_manifest" "cluster_issuer_prod" {
-  depends_on = [helm_release.cert_manager, kubernetes_secret_v1.cloudflare_api_tokens]
+  depends_on = [kubernetes_secret_v1.cloudflare_api_tokens]
 
   manifest = {
     apiVersion = "cert-manager.io/v1"

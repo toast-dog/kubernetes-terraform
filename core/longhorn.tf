@@ -1,20 +1,8 @@
-resource "helm_release" "longhorn" {
-  name             = "longhorn"
-  repository       = "https://charts.longhorn.io"
-  chart            = "longhorn"
-  version          = var.longhorn_version
-  namespace        = "longhorn-system"
-  create_namespace = true
-  wait             = true
-
-  values = [templatefile("${path.module}/config/longhorn-values.yaml", {
-    longhorn_replica_count = var.longhorn_replica_count
-  })]
-}
+# Helm release is in core-helm/ — namespace is guaranteed to exist when this module runs.
 
 # Longhorn UI IngressRoute with Authentik forward auth
 resource "kubernetes_manifest" "longhorn_ingressroute" {
-  depends_on = [helm_release.longhorn, kubernetes_manifest.authentik_middleware]
+  depends_on = [kubernetes_manifest.authentik_middleware]
 
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
@@ -28,7 +16,7 @@ resource "kubernetes_manifest" "longhorn_ingressroute" {
       routes = [
         {
           kind     = "Rule"
-          match    = "Host(`${var.longhorn_hostname}`)"
+          match    = "Host(`${local.longhorn_hostname}`)"
           priority = 10
           middlewares = [{
             name      = "authentik"
@@ -41,7 +29,7 @@ resource "kubernetes_manifest" "longhorn_ingressroute" {
         },
         {
           kind     = "Rule"
-          match    = "Host(`${var.longhorn_hostname}`) && PathPrefix(`/outpost.goauthentik.io/`)"
+          match    = "Host(`${local.longhorn_hostname}`) && PathPrefix(`/outpost.goauthentik.io/`)"
           priority = 15
           services = [{
             name = "authentik-external"

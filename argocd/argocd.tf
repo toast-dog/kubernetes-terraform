@@ -1,4 +1,7 @@
 resource "helm_release" "argocd" {
+  # core/ (MetalLB, Traefik) ordering is enforced by the Terragrunt dependency
+  # block in terragrunt.hcl — no cross-module depends_on needed here.
+
   name             = "argocd"
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"
@@ -8,13 +11,13 @@ resource "helm_release" "argocd" {
   wait             = true
 
   values = [templatefile("${path.module}/config/argocd-values.yaml", {
-    argocd_hostname = var.argocd_hostname
+    argocd_hostname = local.argocd_hostname
   })]
 }
 
 # Two routes: UI (priority 10) and gRPC CLI (priority 11, h2c) — ArgoCD handles its own auth, no Authentik needed
 resource "kubernetes_manifest" "argocd_ingressroute" {
-  depends_on = [helm_release.argocd, helm_release.traefik]
+  depends_on = [helm_release.argocd]
 
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
@@ -28,7 +31,7 @@ resource "kubernetes_manifest" "argocd_ingressroute" {
       routes = [
         {
           kind     = "Rule"
-          match    = "Host(`${var.argocd_hostname}`)"
+          match    = "Host(`${local.argocd_hostname}`)"
           priority = 10
           services = [{
             name = "argocd-server"
@@ -37,7 +40,7 @@ resource "kubernetes_manifest" "argocd_ingressroute" {
         },
         {
           kind     = "Rule"
-          match    = "Host(`${var.argocd_hostname}`) && Header(`Content-Type`, `application/grpc`)"
+          match    = "Host(`${local.argocd_hostname}`) && Header(`Content-Type`, `application/grpc`)"
           priority = 11
           services = [{
             name   = "argocd-server"

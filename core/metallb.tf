@@ -1,16 +1,6 @@
-resource "helm_release" "metallb" {
-  name             = "metallb"
-  repository       = "https://metallb.github.io/metallb"
-  chart            = "metallb"
-  version          = var.metallb_version
-  namespace        = "metallb-system"
-  create_namespace = true
-  wait             = true
-}
+# Helm release is in core-helm/ — CRDs are guaranteed to exist when this module runs.
 
 resource "kubernetes_manifest" "metallb_ip_pool" {
-  depends_on = [helm_release.metallb]
-
   manifest = {
     apiVersion = "metallb.io/v1beta1"
     kind       = "IPAddressPool"
@@ -25,8 +15,6 @@ resource "kubernetes_manifest" "metallb_ip_pool" {
 }
 
 resource "kubernetes_manifest" "metallb_l2_advertisement" {
-  depends_on = [helm_release.metallb]
-
   manifest = {
     apiVersion = "metallb.io/v1beta1"
     kind       = "L2Advertisement"

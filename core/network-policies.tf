@@ -86,157 +86,18 @@ resource "kubernetes_manifest" "global_default_deny" {
 }
 
 # ===========================================================================
-# VAULT
-#
-# Inbound port 8200: external-secrets (secret reads), traefik (UI), vault namespace (unseal)
-# Inbound port 8201: vault namespace only (raft replication between vault-0/1/2)
-# Outbound port 6443: kubernetes API (vault k8s auth method validates pod service account tokens)
-# ===========================================================================
-
-# Allows vault pods to talk to each other (raft replication on 8201) and the
-# unseal CronJob pods to reach vault servers (8200). The unseal pod labels change
-# per-run (batch job name is time-based), so we select all pods in the namespace.
-resource "kubernetes_manifest" "netpol_vault_allow_internal" {
-  depends_on = [helm_release.vault]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-vault-internal", namespace = "vault" }
-    spec = {
-      podSelector = {}
-      policyTypes = ["Ingress", "Egress"]
-      ingress     = [{ from = [{ podSelector = {} }] }]
-      egress      = [{ to = [{ podSelector = {} }] }]
-    }
-  }
-}
-
-resource "kubernetes_manifest" "netpol_vault_allow_ingress_8200" {
-  depends_on = [helm_release.vault, helm_release.external_secrets, helm_release.traefik]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-ingress-8200", namespace = "vault" }
-    spec = {
-      podSelector = { matchLabels = { "app.kubernetes.io/name" = "vault" } }
-      policyTypes = ["Ingress"]
-      ingress = [{
-        from = [{
-          namespaceSelector = {
-            matchExpressions = [{
-              key      = "kubernetes.io/metadata.name"
-              operator = "In"
-              values   = ["external-secrets", "traefik"]
-            }]
-          }
-        }]
-        ports = [{ port = 8200, protocol = "TCP" }]
-      }]
-    }
-  }
-}
-
-# Vault's k8s auth method calls the API server to validate pod service account tokens.
-# Calico evaluates egress post-DNAT: kubernetes.default.svc:443 → control-plane-node:6443.
-resource "kubernetes_manifest" "netpol_vault_allow_egress_k8s_api" {
-  depends_on = [helm_release.vault]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-egress-k8s-api", namespace = "vault" }
-    spec = {
-      podSelector = {}
-      policyTypes = ["Egress"]
-      egress = [{
-        to    = [for ip in var.control_plane_ips : { ipBlock = { cidr = "${ip}/32" } }]
-        ports = [{ port = 6443, protocol = "TCP" }]
-      }]
-    }
-  }
-}
-
-# ===========================================================================
-# EXTERNAL-SECRETS
-#
-# Inbound port 10250: kube-apiserver webhook calls (ExternalSecret/SecretStore validation)
-# Outbound port 8200: vault (reading secrets)
-# Outbound port 6443: kubernetes API (creating/updating Kubernetes Secrets)
-#
-# Webhook note: ipBlock cidr = cluster_cidr because kube-apiserver webhook calls
-# traverse Calico IPIP — the source IP at the pod is the control plane tunl0
-# address (within pod CIDR), not the node IP. See file header for full explanation.
-# ===========================================================================
-
-resource "kubernetes_manifest" "netpol_external_secrets_allow_ingress_webhook" {
-  depends_on = [helm_release.external_secrets]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-ingress-webhook", namespace = "external-secrets" }
-    spec = {
-      podSelector = {}
-      policyTypes = ["Ingress"]
-      ingress = [{
-        from  = [{ ipBlock = { cidr = var.cluster_cidr } }]
-        ports = [{ port = 10250, protocol = "TCP" }]
-      }]
-    }
-  }
-}
-
-# ESO reads secrets from Vault to sync into Kubernetes Secrets. Mirrors the
-# allow-ingress-8200 rule on the vault side — both ends of the connection need a policy.
-# namespaceSelector is sufficient — Calico evaluates post-DNAT so it sees vault pod IPs.
-resource "kubernetes_manifest" "netpol_external_secrets_allow_egress_vault" {
-  depends_on = [helm_release.external_secrets, helm_release.vault]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-egress-vault", namespace = "external-secrets" }
-    spec = {
-      podSelector = {}
-      policyTypes = ["Egress"]
-      egress = [{
-        to    = [{ namespaceSelector = { matchLabels = { "kubernetes.io/metadata.name" = "vault" } } }]
-        ports = [{ port = 8200, protocol = "TCP" }]
-      }]
-    }
-  }
-}
-
-# ESO writes synced secrets to the API server and watches ExternalSecret/ClusterSecretStore
-# resources via a long-lived watch connection. Calico evaluates egress post-DNAT.
-resource "kubernetes_manifest" "netpol_external_secrets_allow_egress_k8s_api" {
-  depends_on = [helm_release.external_secrets]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-egress-k8s-api", namespace = "external-secrets" }
-    spec = {
-      podSelector = {}
-      policyTypes = ["Egress"]
-      egress = [{
-        to    = [for ip in var.control_plane_ips : { ipBlock = { cidr = "${ip}/32" } }]
-        ports = [{ port = 6443, protocol = "TCP" }]
-      }]
-    }
-  }
-}
-
-# ===========================================================================
 # CERT-MANAGER
 #
 # Inbound port 10250: kube-apiserver webhook calls (Certificate/Issuer validation)
 # Outbound port 6443: kubernetes API (managing certificate secrets)
 # Outbound port 443:  internet (Let's Encrypt ACME API, Cloudflare DNS API for DNS-01)
 #
-# Webhook note: same IPIP/tunl0 reason as external-secrets above.
+# Webhook note: same IPIP/tunl0 reason as documented in the file header.
 # The external egress rule explicitly excludes internal CIDRs so cert-manager
 # cannot reach cluster-internal services through the broad external rule.
 # ===========================================================================
 
 resource "kubernetes_manifest" "netpol_cert_manager_allow_ingress_webhook" {
-  depends_on = [helm_release.cert_manager]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -253,7 +114,6 @@ resource "kubernetes_manifest" "netpol_cert_manager_allow_ingress_webhook" {
 }
 
 resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_k8s_api" {
-  depends_on = [helm_release.cert_manager]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -272,7 +132,6 @@ resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_k8s_api" {
 # Reaches Let's Encrypt (ACME) and Cloudflare (DNS-01 challenge) on the public internet.
 # Internal CIDRs are excluded so this broad rule can't be used to reach cluster services.
 resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_external" {
-  depends_on = [helm_release.cert_manager]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -308,7 +167,6 @@ resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_external" {
 # ===========================================================================
 
 resource "kubernetes_manifest" "netpol_traefik_allow_ingress_public" {
-  depends_on = [helm_release.traefik]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -327,7 +185,6 @@ resource "kubernetes_manifest" "netpol_traefik_allow_ingress_public" {
 # Traefik watches IngressRoute/Ingress resources and reads TLS secrets from the API server.
 # Calico evaluates egress post-DNAT: kubernetes.default.svc:443 → control-plane-node:6443.
 resource "kubernetes_manifest" "netpol_traefik_allow_egress_k8s_api" {
-  depends_on = [helm_release.traefik]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -344,7 +201,6 @@ resource "kubernetes_manifest" "netpol_traefik_allow_egress_k8s_api" {
 }
 
 resource "kubernetes_manifest" "netpol_traefik_allow_egress_cluster" {
-  depends_on = [helm_release.traefik]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -365,7 +221,6 @@ resource "kubernetes_manifest" "netpol_traefik_allow_egress_cluster" {
 }
 
 resource "kubernetes_manifest" "netpol_traefik_allow_egress_external" {
-  depends_on = [helm_release.traefik]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -391,103 +246,6 @@ resource "kubernetes_manifest" "netpol_traefik_allow_egress_external" {
 }
 
 # ===========================================================================
-# ARGOCD
-#
-# Inbound ports 8080: traefik only (UI + gRPC CLI access via ingress)
-# Outbound internal:  all traffic within argocd namespace — server, redis, repo-server,
-#                     dex, and controllers all communicate extensively with each other
-# Outbound port 6443: kubernetes API (deploying resources)
-# Outbound port 443:  external git (Forgejo at git.thompson-manor.org) + OIDC
-# Outbound port 22:   git over SSH
-# ===========================================================================
-
-# Scoped to argocd-server only — redis, repo-server, dex, and controllers have
-# no business receiving traffic from Traefik, so they are excluded by podSelector.
-resource "kubernetes_manifest" "netpol_argocd_allow_ingress_from_traefik" {
-  depends_on = [helm_release.argocd, helm_release.traefik]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-ingress-from-traefik", namespace = "argocd" }
-    spec = {
-      podSelector = { matchLabels = { "app.kubernetes.io/name" = "argocd-server" } }
-      policyTypes = ["Ingress"]
-      ingress = [{
-        from  = [{ namespaceSelector = { matchLabels = { "kubernetes.io/metadata.name" = "traefik" } } }]
-        ports = [{ port = 8080, protocol = "TCP" }]
-      }]
-    }
-  }
-}
-
-# ArgoCD components communicate heavily with each other (server↔redis, server↔repo-server,
-# server↔dex, controller↔server). Allow all intra-namespace traffic rather than mapping each pair.
-resource "kubernetes_manifest" "netpol_argocd_allow_internal" {
-  depends_on = [helm_release.argocd]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-argocd-internal", namespace = "argocd" }
-    spec = {
-      podSelector = {}
-      policyTypes = ["Ingress", "Egress"]
-      ingress     = [{ from = [{ podSelector = {} }] }]
-      egress      = [{ to = [{ podSelector = {} }] }]
-    }
-  }
-}
-
-# application-controller continuously reconciles live cluster state against git — all
-# resource creates, updates, and watches go through the API server. Calico evaluates egress post-DNAT.
-resource "kubernetes_manifest" "netpol_argocd_allow_egress_k8s_api" {
-  depends_on = [helm_release.argocd]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-egress-k8s-api", namespace = "argocd" }
-    spec = {
-      podSelector = {}
-      policyTypes = ["Egress"]
-      egress = [{
-        to    = [for ip in var.control_plane_ips : { ipBlock = { cidr = "${ip}/32" } }]
-        ports = [{ port = 6443, protocol = "TCP" }]
-      }]
-    }
-  }
-}
-
-# repo-server fetches git repos over HTTPS or SSH. Port 443 also covers OIDC token
-# exchange if ArgoCD SSO is wired to Authentik later.
-resource "kubernetes_manifest" "netpol_argocd_allow_egress_external" {
-  depends_on = [helm_release.argocd]
-  manifest = {
-    apiVersion = "networking.k8s.io/v1"
-    kind       = "NetworkPolicy"
-    metadata   = { name = "allow-egress-external", namespace = "argocd" }
-    spec = {
-      podSelector = {}
-      policyTypes = ["Egress"]
-      egress = [{
-        to = [{
-          ipBlock = {
-            cidr = "0.0.0.0/0"
-            except = [
-              var.cluster_cidr,
-              "10.96.0.0/12",
-              "192.168.0.0/16"
-            ]
-          }
-        }]
-        ports = [
-          { port = 443, protocol = "TCP" }, # git repos + OIDC
-          { port = 22, protocol = "TCP" }   # git over SSH
-        ]
-      }]
-    }
-  }
-}
-
-# ===========================================================================
 # METALLB
 #
 # Note: the speaker DaemonSet uses hostNetwork: true, which places it on the
@@ -499,11 +257,10 @@ resource "kubernetes_manifest" "netpol_argocd_allow_egress_external" {
 # Inbound port 9443:  kube-apiserver webhook calls (IPAddressPool/L2Advertisement validation)
 # Outbound port 6443: kubernetes API (watching services, updating status)
 #
-# Webhook note: same IPIP/tunl0 reason as external-secrets above.
+# Webhook note: same IPIP/tunl0 reason as documented in the file header.
 # ===========================================================================
 
 resource "kubernetes_manifest" "netpol_metallb_allow_ingress_webhook" {
-  depends_on = [helm_release.metallb]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -519,10 +276,8 @@ resource "kubernetes_manifest" "netpol_metallb_allow_ingress_webhook" {
   }
 }
 
-# Controller and speaker coordinate IP assignment over the pod network. Note: the speaker's
-# ARP advertisement traffic uses hostNetwork and is outside the scope of NetworkPolicies.
+# Controller and speaker coordinate IP assignment over the pod network.
 resource "kubernetes_manifest" "netpol_metallb_allow_internal" {
-  depends_on = [helm_release.metallb]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"
@@ -539,7 +294,6 @@ resource "kubernetes_manifest" "netpol_metallb_allow_internal" {
 # Controller watches for LoadBalancer Services and updates their status with the
 # assigned IP — both the watch and status writes go through the API server. Calico evaluates egress post-DNAT.
 resource "kubernetes_manifest" "netpol_metallb_allow_egress_k8s_api" {
-  depends_on = [helm_release.metallb]
   manifest = {
     apiVersion = "networking.k8s.io/v1"
     kind       = "NetworkPolicy"

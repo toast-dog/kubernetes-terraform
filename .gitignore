@@ -1,14 +1,25 @@
-# Terraform
+# Terraform / Terragrunt generated files
 .terraform/
 .terraform.lock.hcl
+.terragrunt-cache/
 terraform.tfstate
 terraform.tfstate.backup
 *.tfstate
 *.tfstate.*
 plan
 
+# Terragrunt-generated provider version constraints (source of truth: root.hcl)
+versions.tf
+
+# Terragrunt-generated backend config
+backend.tf
+
+# Terragrunt state directory (one subdir per module)
+.terraform-state/
+
 # Secrets
 secrets.auto.tfvars
+vault-init.json
 
 # Kubeconfig
 kubeconfig

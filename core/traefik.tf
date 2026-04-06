@@ -1,23 +1,8 @@
-resource "helm_release" "traefik" {
-  depends_on = [helm_release.cert_manager, kubernetes_manifest.metallb_ip_pool, kubernetes_manifest.metallb_l2_advertisement]
+# Helm release is in core-helm/ — CRDs and namespace are guaranteed to exist when this module runs.
 
-  name             = "traefik"
-  repository       = "https://traefik.github.io/charts"
-  chart            = "traefik"
-  version          = var.traefik_version
-  namespace        = "traefik"
-  create_namespace = true
-  wait             = true
-
-  values = [templatefile("${path.module}/config/traefik-values.yaml", {
-    load_balancer_ip = var.traefik_load_balancer_ip
-  })]
-}
-
-# One Certificate per entry in var.certificates — defaults to letsencrypt-staging, override in secrets.auto.tfvars once verified
+# One Certificate per entry in local.certificates
 resource "kubernetes_manifest" "certificates" {
-  for_each   = var.certificates
-  depends_on = [helm_release.traefik]
+  for_each = local.certificates
 
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -39,8 +24,6 @@ resource "kubernetes_manifest" "certificates" {
 
 # ForwardAuth middleware that delegates authentication to Authentik
 resource "kubernetes_manifest" "authentik_middleware" {
-  depends_on = [helm_release.traefik]
-
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "Middleware"
@@ -73,8 +56,6 @@ resource "kubernetes_manifest" "authentik_middleware" {
 
 # ExternalName service so Traefik can route outpost callbacks to the external Authentik instance
 resource "kubernetes_service_v1" "authentik_external" {
-  depends_on = [helm_release.traefik]
-
   metadata {
     name      = "authentik-external"
     namespace = "traefik"
@@ -88,7 +69,7 @@ resource "kubernetes_service_v1" "authentik_external" {
 
 # Traefik dashboard IngressRoute with Authentik forward auth
 resource "kubernetes_manifest" "traefik_dashboard" {
-  depends_on = [helm_release.traefik, kubernetes_manifest.authentik_middleware]
+  depends_on = [kubernetes_manifest.authentik_middleware]
 
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
@@ -102,7 +83,7 @@ resource "kubernetes_manifest" "traefik_dashboard" {
       routes = [
         {
           kind     = "Rule"
-          match    = "Host(`${var.traefik_dashboard_host}`)"
+          match    = "Host(`${local.traefik_dashboard_host}`)"
           priority = 10
           middlewares = [{
             name      = "authentik"
@@ -115,7 +96,7 @@ resource "kubernetes_manifest" "traefik_dashboard" {
         },
         {
           kind     = "Rule"
-          match    = "Host(`${var.traefik_dashboard_host}`) && PathPrefix(`/outpost.goauthentik.io/`)"
+          match    = "Host(`${local.traefik_dashboard_host}`) && PathPrefix(`/outpost.goauthentik.io/`)"
           priority = 15
           services = [{
             name = "authentik-external"
@@ -129,8 +110,6 @@ resource "kubernetes_manifest" "traefik_dashboard" {
 
 # Set the default TLS certificate for all Traefik entrypoints
 resource "kubernetes_manifest" "default_tls_store" {
-  depends_on = [helm_release.traefik]
-
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "TLSStore"
@@ -140,7 +119,7 @@ resource "kubernetes_manifest" "default_tls_store" {
     }
     spec = {
       defaultCertificate = {
-        secretName = var.certificates[var.traefik_default_certificate].secret_name
+        secretName = local.certificates[var.traefik_default_certificate].secret_name
       }
     }
   }
