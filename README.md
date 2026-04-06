@@ -66,7 +66,7 @@ The Vault token is required at plan time because the vault provider authenticate
 
 **Tip:** use the 1Password CLI to avoid pasting the token manually:
 ```bash
-export VAULT_TOKEN=$(op item get "Vault Root Token" --fields password)
+export VAULT_TOKEN=$(op environment read <environment id>)
 make plan
 make apply
 ```
