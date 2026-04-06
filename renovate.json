@@ -36,7 +36,8 @@
       "customType": "regex",
       "description": "Terraform provider versions in root terragrunt.hcl generate block",
       "managerFilePatterns": [
-        "/terragrunt\\.hcl$/"
+        "/terragrunt\\.hcl$/",
+        "/root\\.hcl$/"
       ],
       "matchStrings": [
         "version\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*# renovate: datasource=(?<datasource>[^\\s]+)( depName=(?<depName>[^\\s]+))?"
