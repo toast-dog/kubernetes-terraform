@@ -73,7 +73,7 @@ generate "versions" {
         }
         vault = {
           source  = "hashicorp/vault"
-          version = "~> 4.0"  # renovate: datasource=terraform-provider depName=hashicorp/vault
+          version = "~> 5.0"  # renovate: datasource=terraform-provider depName=hashicorp/vault
         }
       }
     }
