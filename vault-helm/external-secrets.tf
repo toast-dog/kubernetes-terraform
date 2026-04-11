@@ -8,32 +8,21 @@ resource "helm_release" "external_secrets" {
   wait             = true
 }
 
-# Per-namespace vault-auth service accounts — ESO uses the TokenRequest API to generate
-# short-lived tokens. Each SA authenticates to Vault with a namespace-scoped role only.
-# The namespace must already exist before applying (created by Helm or ArgoCD).
-resource "kubernetes_service_account_v1" "vault_auth" {
-  for_each   = toset(var.vault_secret_stores)
+# ClusterSecretStore — single cluster-wide store backed by Vault.
+# serviceAccountRef.name = "vault-auth" with no namespace causes ESO to generate a
+# TokenRequest for vault-auth in the ExternalSecret's own namespace. Vault validates
+# the token, extracts the service_account_namespace from the JWT, and the templated
+# policy in vault/vault.tf scopes access to that namespace automatically.
+# Adding a new app requires only: create vault-auth SA in the app namespace (via its
+# own Helm chart or ArgoCD Application) and write ExternalSecret resources — no Terraform.
+resource "kubernetes_manifest" "vault_cluster_secret_store" {
   depends_on = [helm_release.external_secrets]
-
-  metadata {
-    name      = "vault-auth"
-    namespace = each.key
-  }
-}
-
-# Per-namespace SecretStores — namespace-scoped, so an ExternalSecret in one
-# namespace cannot reference another namespace's store. References the local
-# vault-auth SA; no cross-namespace credential sharing.
-resource "kubernetes_manifest" "vault_secret_store" {
-  for_each   = toset(var.vault_secret_stores)
-  depends_on = [helm_release.external_secrets, kubernetes_service_account_v1.vault_auth]
 
   manifest = {
     apiVersion = "external-secrets.io/v1"
-    kind       = "SecretStore"
+    kind       = "ClusterSecretStore"
     metadata = {
-      name      = "vault"
-      namespace = each.key
+      name = "vault"
     }
     spec = {
       provider = {
@@ -45,20 +34,25 @@ resource "kubernetes_manifest" "vault_secret_store" {
             auth = {
               kubernetes = {
                 mountPath = "kubernetes"
-                role      = "secret-store-${each.key}"
+                role      = "secret-store"
+                # namespace intentionally omitted — ESO generates a TokenRequest for
+                # vault-auth in the ExternalSecret's own namespace. Vault sees that
+                # namespace in the JWT metadata, and the templated policy scopes access
+                # to secret/data/<that-namespace>/* automatically.
                 serviceAccountRef = {
                   name = "vault-auth"
                 }
               }
             }
           },
-          # caProvider references the vault-internal-ca Secret created by vault/vault_pki.tf.
-          # ESO reads it at runtime — no Terraform cross-module output needed.
+          # caProvider references vault-internal-ca in the external-secrets namespace,
+          # created by vault/vault_pki.tf. ESO reads it at runtime.
           var.bootstrap_mode ? {} : {
             caProvider = {
-              type = "Secret"
-              name = "vault-internal-ca"
-              key  = "ca.crt"
+              type      = "Secret"
+              name      = "vault-internal-ca"
+              namespace = "external-secrets"
+              key       = "ca.crt"
             }
           }
         )

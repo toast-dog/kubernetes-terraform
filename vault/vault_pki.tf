@@ -279,7 +279,9 @@ resource "kubernetes_manifest" "vault_tls_cert" {
 # Created in Apply 1 (alongside the PKI) so the ServersTransport exists before
 # vault-helm Apply 2 adds the IngressRoute serversTransport reference.
 resource "kubernetes_secret_v1" "vault_internal_ca" {
-  for_each   = toset(concat(var.vault_secret_stores, ["vault"]))
+  # vault: ServersTransport for Traefik → Vault backend
+  # external-secrets: ClusterSecretStore caProvider
+  for_each   = toset(["vault", "external-secrets"])
   depends_on = [vault_pki_secret_backend_root_cert.root]
 
   metadata {

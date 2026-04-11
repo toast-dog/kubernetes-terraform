@@ -21,16 +21,6 @@ variable "cluster_cidr" {
 }
 
 # ---------------------------------------------------------------------------
-# External Secrets — per-namespace SecretStores
-# ---------------------------------------------------------------------------
-
-variable "vault_secret_stores" {
-  description = "Namespaces to provision with a scoped Vault policy and Kubernetes auth role. Must match vault_secret_stores in vault-helm/."
-  type        = list(string)
-  default     = []
-}
-
-# ---------------------------------------------------------------------------
 # Bootstrap
 # ---------------------------------------------------------------------------
 

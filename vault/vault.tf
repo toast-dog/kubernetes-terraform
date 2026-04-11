@@ -27,30 +27,32 @@ resource "vault_kubernetes_auth_backend_config" "default" {
   kubernetes_host = "https://kubernetes.default.svc.cluster.local:443"
 }
 
-# Per-namespace Vault policies — each grants read access only to that namespace's secret path.
-# Driven by var.vault_secret_stores; add a namespace there to provision it automatically.
+# Templated Vault policy — scopes each request to the authenticating pod's own namespace.
+# The accessor interpolation is resolved at apply time from vault_auth_backend.kubernetes.
+# Adding a new app namespace requires zero Terraform changes — ESO generates a TokenRequest
+# for the vault-auth SA in the ExternalSecret's namespace, Vault substitutes that namespace
+# into the template, and access is automatically scoped.
 resource "vault_policy" "secret_store" {
-  for_each = toset(var.vault_secret_stores)
-  name     = "secret-store-${each.key}"
-  policy   = <<-EOT
-    path "secret/data/${each.key}/*" {
+  name = "secret-store"
+  policy = <<-EOT
+    path "secret/data/{{identity.entity.aliases.${vault_auth_backend.kubernetes.accessor}.metadata.service_account_namespace}}/*" {
       capabilities = ["read"]
     }
-    path "secret/metadata/${each.key}/*" {
+    path "secret/metadata/{{identity.entity.aliases.${vault_auth_backend.kubernetes.accessor}.metadata.service_account_namespace}}/*" {
       capabilities = ["read", "list"]
     }
   EOT
 }
 
-# Per-namespace Vault auth roles — each binds to the vault-auth service account
-# in the app namespace. ESO uses the TokenRequest API to generate short-lived
-# tokens for that SA, so the central ESO service account never touches Vault directly.
+# Single Vault auth role — bound to the vault-auth SA in any namespace ("*").
+# ESO's ClusterSecretStore generates a short-lived TokenRequest for vault-auth in
+# the ExternalSecret's namespace; Vault validates it and populates the identity
+# metadata that the templated policy above uses for path substitution.
 resource "vault_kubernetes_auth_backend_role" "secret_store" {
-  for_each                         = toset(var.vault_secret_stores)
   backend                          = vault_auth_backend.kubernetes.path
-  role_name                        = "secret-store-${each.key}"
+  role_name                        = "secret-store"
   bound_service_account_names      = ["vault-auth"]
-  bound_service_account_namespaces = [each.key]
-  token_policies                   = [vault_policy.secret_store[each.key].name]
+  bound_service_account_namespaces = ["*"]
+  token_policies                   = [vault_policy.secret_store.name]
   token_ttl                        = 3600
 }

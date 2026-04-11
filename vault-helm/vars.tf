@@ -40,12 +40,6 @@ variable "external_secrets_version" {
   type = string
 }
 
-variable "vault_secret_stores" {
-  description = "Namespaces to provision with a vault-auth service account and SecretStore."
-  type        = list(string)
-  default     = []
-}
-
 # ---------------------------------------------------------------------------
 # Bootstrap
 # ---------------------------------------------------------------------------

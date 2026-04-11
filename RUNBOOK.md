@@ -228,22 +228,25 @@ kubectl get certificate -n traefik
 # Vault cluster healthy
 kubectl get pods -n vault        # all 3 should be 1/1
 
-# ESO connected to Vault (only populated once vault_secret_stores has entries)
-kubectl get secretstore -A
+# ESO ClusterSecretStore connected to Vault
+kubectl get clustersecretstore
 ```
 
 ### End-to-end secret sync test
 
-ESO uses per-namespace `SecretStore` objects. A namespace must be added to `vault_secret_stores` in `vault-helm/terraform.tfvars` and `vault/terraform.tfvars` before its `SecretStore` is provisioned. Run this test against a namespace that has been configured.
+ESO uses a single `ClusterSecretStore` named `vault`. The only per-namespace requirement is a `vault-auth` ServiceAccount (which app Helm charts or ArgoCD Applications create). No Terraform changes are needed when adding new namespaces.
 
 ```bash
-# Write a test secret to Vault (replace <namespace> with your configured namespace)
+# Write a test secret to Vault
 NAMESPACE=<namespace>
 kubectl exec -n vault vault-0 -- sh -c \
   "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$VAULT_TOKEN \
    vault kv put secret/${NAMESPACE}/test foo=bar"
 
-# Create an ExternalSecret in that namespace
+# Create the vault-auth SA ESO will use to authenticate
+kubectl create serviceaccount vault-auth -n ${NAMESPACE}
+
+# Create an ExternalSecret referencing the ClusterSecretStore
 kubectl apply -f - <<EOF
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -254,7 +257,7 @@ spec:
   refreshInterval: 1m
   secretStoreRef:
     name: vault
-    kind: SecretStore
+    kind: ClusterSecretStore
   target:
     name: test-secret
   data:
@@ -273,6 +276,7 @@ kubectl get secret test-secret -n ${NAMESPACE} -o jsonpath='{.data.foo}' | base6
 # Clean up
 kubectl delete externalsecret test-secret -n ${NAMESPACE}
 kubectl delete secret test-secret -n ${NAMESPACE}
+kubectl delete serviceaccount vault-auth -n ${NAMESPACE}
 ```
 
 ---
@@ -299,7 +303,7 @@ make apply
 ### Adding a new service
 
 1. Create `<name>.tf` in the appropriate module with the `helm_release` and CRD resources
-2. If the service needs Vault secrets, add its namespace to `vault_secret_stores` in `vault-helm/terraform.tfvars` and `vault/terraform.tfvars`
+2. If the service needs Vault secrets, ensure it creates a `vault-auth` ServiceAccount in its namespace — no Terraform changes required
 3. Add variables to the module's `vars.tf` and values to `terraform.tfvars`
 4. Run a normal apply
 
