@@ -7,5 +7,7 @@ resource "helm_release" "vault" {
   create_namespace = true
   wait             = false # HA pods start sealed (readiness probe fails) — wait=true would hang
 
-  values = [file("${path.module}/config/vault-values.yaml")]
+  values = [templatefile("${path.module}/config/vault-values.yaml", {
+    tls_enabled = !var.bootstrap_mode
+  })]
 }

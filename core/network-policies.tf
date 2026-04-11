@@ -129,6 +129,24 @@ resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_k8s_api" {
   }
 }
 
+# cert-manager authenticates to Vault (k8s auth) and calls the PKI sign endpoint to issue
+# internal certificates. Vault runs in the vault namespace on port 8200.
+resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_vault" {
+  manifest = {
+    apiVersion = "networking.k8s.io/v1"
+    kind       = "NetworkPolicy"
+    metadata   = { name = "allow-egress-vault", namespace = "cert-manager" }
+    spec = {
+      podSelector = {}
+      policyTypes = ["Egress"]
+      egress = [{
+        to    = [{ namespaceSelector = { matchLabels = { "kubernetes.io/metadata.name" = "vault" } } }]
+        ports = [{ port = 8200, protocol = "TCP" }]
+      }]
+    }
+  }
+}
+
 # Reaches Let's Encrypt (ACME) and Cloudflare (DNS-01 challenge) on the public internet.
 # Internal CIDRs are excluded so this broad rule can't be used to reach cluster services.
 resource "kubernetes_manifest" "netpol_cert_manager_allow_egress_external" {

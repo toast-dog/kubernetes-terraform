@@ -37,21 +37,31 @@ resource "kubernetes_manifest" "vault_secret_store" {
     }
     spec = {
       provider = {
-        vault = {
-          # TODO (Vault PKI plan): update to https after TLS is configured
-          server  = "http://vault.vault.svc.cluster.local:8200"
-          path    = "secret"
-          version = "v2"
-          auth = {
-            kubernetes = {
-              mountPath = "kubernetes"
-              role      = "secret-store-${each.key}"
-              serviceAccountRef = {
-                name = "vault-auth"
+        vault = merge(
+          {
+            server  = var.bootstrap_mode ? "http://vault.vault.svc.cluster.local:8200" : "https://vault.vault.svc.cluster.local:8200"
+            path    = "secret"
+            version = "v2"
+            auth = {
+              kubernetes = {
+                mountPath = "kubernetes"
+                role      = "secret-store-${each.key}"
+                serviceAccountRef = {
+                  name = "vault-auth"
+                }
               }
             }
+          },
+          # caProvider references the vault-internal-ca Secret created by vault/vault_pki.tf.
+          # ESO reads it at runtime — no Terraform cross-module output needed.
+          var.bootstrap_mode ? {} : {
+            caProvider = {
+              type = "Secret"
+              name = "vault-internal-ca"
+              key  = "ca.crt"
+            }
           }
-        }
+        )
       }
     }
   }

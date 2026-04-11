@@ -44,7 +44,7 @@ resource "kubernetes_manifest" "netpol_vault_allow_ingress_8200" {
             matchExpressions = [{
               key      = "kubernetes.io/metadata.name"
               operator = "In"
-              values   = ["external-secrets", "traefik"]
+              values   = ["external-secrets", "traefik", "cert-manager"]
             }]
           }
         }]

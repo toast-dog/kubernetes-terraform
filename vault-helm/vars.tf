@@ -45,3 +45,13 @@ variable "vault_secret_stores" {
   type        = list(string)
   default     = []
 }
+
+# ---------------------------------------------------------------------------
+# Bootstrap
+# ---------------------------------------------------------------------------
+
+variable "bootstrap_mode" {
+  description = "Set true only during initial cluster bootstrap before Vault PKI is available. Controls Vault TLS listener (vault-values.yaml), ESO SecretStore addresses, and unseal CronJob protocol. Default false — only set via TF_VAR_bootstrap_mode during first-time setup."
+  type        = bool
+  default     = false
+}

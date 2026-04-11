@@ -17,10 +17,12 @@ resource "kubernetes_manifest" "vault_ingressroute" {
         kind     = "Rule"
         match    = "Host(`${local.vault_hostname}`)"
         priority = 10
-        services = [{
-          name = "vault"
-          port = 8200
-        }]
+        services = [merge(
+          { name = "vault", port = 8200 },
+          # serversTransport tells Traefik to connect to the backend over HTTPS and
+          # trust the vault-internal-ca cert. Created by vault/vault_pki.tf (Apply 2).
+          var.bootstrap_mode ? {} : { serversTransport = "vault-https" }
+        )]
       }]
     }
   }
@@ -49,6 +51,12 @@ resource "kubernetes_manifest" "vault_unseal_cronjob" {
           template = {
             spec = {
               restartPolicy = "OnFailure"
+              # vault-tls is mounted when TLS is enabled so the unseal script can
+              # verify Vault's cert via VAULT_CACERT. Omitted during bootstrap.
+              volumes = var.bootstrap_mode ? null : [{
+                name   = "vault-tls"
+                secret = { secretName = "vault-tls" }
+              }]
               securityContext = {
                 runAsNonRoot = true               # reject pod at admission if image runs as uid 0
                 seccompProfile = {
@@ -69,7 +77,7 @@ resource "kubernetes_manifest" "vault_unseal_cronjob" {
                 }
                 command = ["/bin/sh", "-c", <<-EOT
                   for pod in vault-0.vault-internal vault-1.vault-internal vault-2.vault-internal; do
-                    export VAULT_ADDR="http://$${pod}:8200"
+                    export VAULT_ADDR="${var.bootstrap_mode ? "http" : "https"}://$${pod}:8200"
                     vault status -format=json 2>/dev/null | grep -q '"sealed": true' || continue
                     vault operator unseal $UNSEAL_KEY_1
                     vault operator unseal $UNSEAL_KEY_2
@@ -77,11 +85,22 @@ resource "kubernetes_manifest" "vault_unseal_cronjob" {
                   done
                 EOT
                 ]
-                env = [
-                  { name = "UNSEAL_KEY_1", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key1" } } },
-                  { name = "UNSEAL_KEY_2", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key2" } } },
-                  { name = "UNSEAL_KEY_3", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key3" } } },
-                ]
+                env = concat(
+                  [
+                    { name = "UNSEAL_KEY_1", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key1" } } },
+                    { name = "UNSEAL_KEY_2", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key2" } } },
+                    { name = "UNSEAL_KEY_3", valueFrom = { secretKeyRef = { name = "vault-unseal-keys", key = "key3" } } },
+                  ],
+                  var.bootstrap_mode ? [] : [
+                    # ca.crt from vault-tls contains the issuer chain — used to verify Vault's TLS cert
+                    { name = "VAULT_CACERT", value = "/vault/userconfig/vault-tls/ca.crt" }
+                  ]
+                )
+                volumeMounts = var.bootstrap_mode ? null : [{
+                  mountPath = "/vault/userconfig/vault-tls"
+                  name      = "vault-tls"
+                  readOnly  = true
+                }]
               }]
             }
           }
