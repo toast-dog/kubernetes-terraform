@@ -156,18 +156,63 @@ The CronJob approach has a security trade-off: unseal keys live in a Kubernetes 
 
 ---
 
-## Phase 3 — Vault Provider Resources
+## Phase 3 — Vault PKI + TLS Bootstrap
 
-With `VAULT_TOKEN` exported, apply the vault module to configure Vault:
+With `VAULT_TOKEN` exported, run:
 
 ```bash
 make bootstrap-vault
 ```
 
-**What gets created:**
+This runs four steps automatically, with a wait between each:
+
+**Step [1/4] — vault Apply 1 (`bootstrap_mode=true`)**
+
+Configures Vault internals and sets up the PKI CA:
 - KV v2 secrets engine at `secret/`
-- Kubernetes auth method + config (allows pods to authenticate to Vault)
-- ESO policy and role (per-namespace, for each entry in `vault_secret_stores`)
+- Kubernetes auth method + config (allows pods to authenticate using their service account tokens)
+- Root CA (`pki` mount, 10-year) and Intermediate CA (`pki_int` mount, 5-year)
+- ACME protocol enabled on `pki_int` (for future Proxmox/OPNsense cert issuance)
+- cert-manager `vault-internal` ClusterIssuer (pointing to Vault HTTP at this stage)
+- `vault-tls` Certificate resource — cert-manager issues it immediately via the ClusterIssuer
+
+**Step [2/4] — Wait for `vault-tls` Secret**
+
+Polls until cert-manager has issued the `vault-tls` Secret in the vault namespace (~30s). This secret contains the TLS cert and key that Vault pods will use.
+
+**Step [3/4] — vault-helm Apply 2 (enables Vault TLS)**
+
+- Switches Vault's listener from HTTP to HTTPS (mounts the `vault-tls` Secret into pods)
+- Updates the IngressRoute to proxy HTTPS to Vault via the homelab CA (`ServersTransport`)
+- Updates the unseal CronJob to connect over HTTPS
+- Deletes all Vault pods (OnDelete update strategy) — they restart with TLS enabled
+- Waits up to 5 minutes for the unseal CronJob to re-unseal all pods
+- Waits for Vault to accept authenticated requests via the ingress before proceeding
+
+**Step [4/4] — vault Apply 2**
+
+- Switches the `vault-internal` ClusterIssuer from HTTP to HTTPS + caBundle
+- Creates `vault-internal-ca` Secrets in each configured namespace (used by ESO `SecretStore` resources to verify Vault's TLS cert)
+
+**After bootstrap-vault completes — install the homelab root CA**
+
+Vault is now the cluster's internal CA. Export the root cert and add it to your trust stores:
+
+```bash
+# Export root CA
+curl -s https://vault.lab.toastdog.net/v1/pki/ca/pem > homelab-root-ca.crt
+
+# Linux (Debian/Ubuntu)
+sudo cp homelab-root-ca.crt /usr/local/share/ca-certificates/homelab-root-ca.crt
+sudo update-ca-certificates
+
+# Windows: double-click .crt → Install Certificate → Local Machine →
+#   Trusted Root Certification Authorities
+
+# macOS: open homelab-root-ca.crt → Keychain Access → set to Always Trust
+```
+
+This is a one-time step per device. The root CA has a 10-year TTL so it won't need to be reinstalled.
 
 ---
 
@@ -189,18 +234,22 @@ kubectl get secretstore -A
 
 ### End-to-end secret sync test
 
-```bash
-# Write a test secret to Vault
-kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_TOKEN \
-  vault kv put secret/test foo=bar
+ESO uses per-namespace `SecretStore` objects. A namespace must be added to `vault_secret_stores` in `vault-helm/terraform.tfvars` and `vault/terraform.tfvars` before its `SecretStore` is provisioned. Run this test against a namespace that has been configured.
 
-# Create an ExternalSecret
+```bash
+# Write a test secret to Vault (replace <namespace> with your configured namespace)
+NAMESPACE=<namespace>
+kubectl exec -n vault vault-0 -- sh -c \
+  "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$VAULT_TOKEN \
+   vault kv put secret/${NAMESPACE}/test foo=bar"
+
+# Create an ExternalSecret in that namespace
 kubectl apply -f - <<EOF
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: test-secret
-  namespace: default
+  namespace: ${NAMESPACE}
 spec:
   refreshInterval: 1m
   secretStoreRef:
@@ -211,19 +260,19 @@ spec:
   data:
     - secretKey: foo
       remoteRef:
-        key: secret/test
+        key: ${NAMESPACE}/test
         property: foo
 EOF
 
 # Should show SecretSynced
-kubectl get externalsecret test-secret
+kubectl get externalsecret test-secret -n ${NAMESPACE}
 
 # Should output: bar
-kubectl get secret test-secret -o jsonpath='{.data.foo}' | base64 -d
+kubectl get secret test-secret -n ${NAMESPACE} -o jsonpath='{.data.foo}' | base64 -d
 
 # Clean up
-kubectl delete externalsecret test-secret
-kubectl delete secret test-secret
+kubectl delete externalsecret test-secret -n ${NAMESPACE}
+kubectl delete secret test-secret -n ${NAMESPACE}
 ```
 
 ---
