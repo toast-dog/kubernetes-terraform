@@ -56,6 +56,12 @@ resource "vault_mount" "pki_int" {
   type                  = "pki"
   max_lease_ttl_seconds = 157680000 # 5 years
   description           = "Homelab Intermediate CA"
+
+  # Required for ACME clients — these headers must be present in ACME challenge
+  # responses. Managed here rather than via vault_generic_endpoint to avoid
+  # Terraform seeing drift every plan from the mount reading them back.
+  allowed_response_headers    = ["Last-Modified", "Location", "Replay-Nonce", "Link"]
+  passthrough_request_headers = ["If-Modified-Since"]
 }
 
 # Intermediate CSR — type = "internal" keeps the intermediate key in Vault.
@@ -96,23 +102,6 @@ resource "vault_pki_secret_backend_config_urls" "int_urls" {
   backend                 = vault_mount.pki_int.path
   issuing_certificates    = ["https://${local.vault_hostname}/v1/pki_int/ca"]
   crl_distribution_points = ["https://${local.vault_hostname}/v1/pki_int/crl"]
-}
-
-# Mount tuning for ACME — ACME clients require specific HTTP response headers
-# that Vault doesn't include by default. Without this, ACME challenges fail
-# with confusing errors. disable_delete = true because tuning is not a
-# resource to destroy — leaving the headers in place is harmless.
-resource "vault_generic_endpoint" "pki_int_tune" {
-  depends_on           = [vault_mount.pki_int]
-  path                 = "sys/mounts/${vault_mount.pki_int.path}/tune"
-  ignore_absent_fields = true
-  disable_delete       = true
-
-  data_json = jsonencode({
-    allowed_response_headers    = ["Last-Modified", "Location", "Replay-Nonce", "Link"]
-    passthrough_request_headers = ["If-Modified-Since"]
-    max_lease_ttl               = "157680000"
-  })
 }
 
 # ACME directory base URL — advertised to ACME clients in the directory
@@ -166,7 +155,6 @@ resource "vault_pki_secret_backend_role" "internal" {
 resource "vault_generic_endpoint" "pki_int_acme" {
   depends_on = [
     vault_pki_secret_backend_role.internal,
-    vault_generic_endpoint.pki_int_tune,
     vault_generic_endpoint.pki_int_cluster,
   ]
   path                 = "${vault_mount.pki_int.path}/config/acme"
