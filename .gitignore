@@ -21,6 +21,7 @@ backend.tf
 # Secrets
 secrets.auto.tfvars
 vault-init.json
+homelab-root-ca.crt
 
 # Kubeconfig
 kubeconfig
