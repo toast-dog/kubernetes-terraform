@@ -1,25 +1,4 @@
 # ---------------------------------------------------------------------------
-# Shared — injected by root.hcl
-# ---------------------------------------------------------------------------
-
-variable "kubeconfig_path" {
-  type    = string
-  default = "~/.kube/config"
-}
-
-variable "domain" {
-  type = string
-}
-
-variable "control_plane_ips" {
-  type = list(string)
-}
-
-variable "cluster_cidr" {
-  type = string
-}
-
-# ---------------------------------------------------------------------------
 # Vault
 # ---------------------------------------------------------------------------
 

@@ -9,10 +9,8 @@ terraform.tfstate.backup
 plan
 tfplan
 
-# Terragrunt-generated provider version constraints (source of truth: root.hcl)
+# Terragrunt-generated files (source of truth: root.hcl)
 versions.tf
-
-# Terragrunt-generated backend config
 backend.tf
 
 # Terragrunt state directory (one subdir per module)

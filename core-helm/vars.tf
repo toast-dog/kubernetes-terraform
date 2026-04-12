@@ -1,28 +1,4 @@
 # ---------------------------------------------------------------------------
-# Shared — injected by root.hcl
-# ---------------------------------------------------------------------------
-
-variable "kubeconfig_path" {
-  description = "Path to the kubeconfig file"
-  type        = string
-  default     = "~/.kube/config"
-}
-
-# domain is passed by root.hcl but not used directly in this module —
-# declared here to avoid "value for undeclared variable" warnings from Terragrunt
-variable "domain" {
-  type = string
-}
-
-variable "control_plane_ips" {
-  type = list(string)
-}
-
-variable "cluster_cidr" {
-  type = string
-}
-
-# ---------------------------------------------------------------------------
 # MetalLB
 # ---------------------------------------------------------------------------
 

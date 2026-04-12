@@ -1,26 +1,4 @@
 # ---------------------------------------------------------------------------
-# Shared — injected by root.hcl
-# ---------------------------------------------------------------------------
-
-variable "domain" {
-  description = "Base domain for all services. Hostnames derived as <service>.<domain> in locals.tf."
-  type        = string
-}
-
-variable "kubeconfig_path" {
-  type    = string
-  default = "~/.kube/config"
-}
-
-variable "control_plane_ips" {
-  type = list(string)
-}
-
-variable "cluster_cidr" {
-  type = string
-}
-
-# ---------------------------------------------------------------------------
 # Bootstrap
 # ---------------------------------------------------------------------------
 
