@@ -53,10 +53,10 @@ resource "kubernetes_manifest" "argocd_project_authentik" {
         namespace = "authentik"
         server    = "https://kubernetes.default.svc"
       }]
-      # Authentik chart creates only namespaced RBAC (Role/RoleBinding).
-      # Namespace is cluster-scoped and required for the namespace manifest.
       clusterResourceWhitelist = [
-        { group = "", kind = "Namespace" },
+        { group = "",                          kind = "Namespace"          },
+        { group = "rbac.authorization.k8s.io", kind = "ClusterRole"        },
+        { group = "rbac.authorization.k8s.io", kind = "ClusterRoleBinding" },
       ]
     }
   }
