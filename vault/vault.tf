@@ -41,6 +41,12 @@ resource "vault_policy" "secret_store" {
     path "secret/metadata/{{identity.entity.aliases.${vault_auth_backend.kubernetes.accessor}.metadata.service_account_namespace}}/*" {
       capabilities = ["read", "list"]
     }
+    # Allows ESO in a namespace to read the Vault database engine static role credentials
+    # for a role named after that namespace (e.g. authentik namespace → database/static-creds/authentik).
+    # Has no effect until tf-kube-post-deploy/authentik configures the database engine.
+    path "database/static-creds/{{identity.entity.aliases.${vault_auth_backend.kubernetes.accessor}.metadata.service_account_namespace}}" {
+      capabilities = ["read"]
+    }
   EOT
 }
 
