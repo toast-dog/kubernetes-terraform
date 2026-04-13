@@ -24,9 +24,10 @@ resource "kubernetes_manifest" "argocd_project_cloudnativepg" {
         server    = "https://kubernetes.default.svc"
       }]
       clusterResourceWhitelist = [
-        { group = "apiextensions.k8s.io",          kind = "CustomResourceDefinition"    },
-        { group = "rbac.authorization.k8s.io",     kind = "ClusterRole"                 },
-        { group = "rbac.authorization.k8s.io",     kind = "ClusterRoleBinding"          },
+        { group = "",                              kind = "Namespace"                      },
+        { group = "apiextensions.k8s.io",          kind = "CustomResourceDefinition"      },
+        { group = "rbac.authorization.k8s.io",     kind = "ClusterRole"                   },
+        { group = "rbac.authorization.k8s.io",     kind = "ClusterRoleBinding"            },
         { group = "admissionregistration.k8s.io",  kind = "MutatingWebhookConfiguration"  },
         { group = "admissionregistration.k8s.io",  kind = "ValidatingWebhookConfiguration" },
       ]
