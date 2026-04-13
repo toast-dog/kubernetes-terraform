@@ -8,6 +8,30 @@
 #                              (derived by cross-referencing `helm template | grep "^kind:"``
 #                               with `kubectl api-resources --namespaced=false`)
 
+resource "kubernetes_manifest" "argocd_project_reloader" {
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "AppProject"
+    metadata = {
+      name      = "reloader"
+      namespace = "argocd"
+    }
+    spec = {
+      description = "Stakater Reloader — rolls pods when Secrets or ConfigMaps change"
+      sourceRepos = ["https://stakater.github.io/stakater-charts"]
+      destinations = [{
+        namespace = "reloader"
+        server    = "https://kubernetes.default.svc"
+      }]
+      clusterResourceWhitelist = [
+        { group = "",                          kind = "Namespace"          },
+        { group = "rbac.authorization.k8s.io", kind = "ClusterRole"        },
+        { group = "rbac.authorization.k8s.io", kind = "ClusterRoleBinding" },
+      ]
+    }
+  }
+}
+
 resource "kubernetes_manifest" "argocd_project_cloudnativepg" {
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
