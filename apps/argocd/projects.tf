@@ -18,7 +18,10 @@ resource "kubernetes_manifest" "argocd_project_reloader" {
     }
     spec = {
       description = "Stakater Reloader — rolls pods when Secrets or ConfigMaps change"
-      sourceRepos = ["https://stakater.github.io/stakater-charts"]
+      sourceRepos = [
+        "https://stakater.github.io/stakater-charts",
+        "https://git.thompson-manor.org/toast-dog/kubernetes-apps",
+      ]
       destinations = [{
         namespace = "reloader"
         server    = "https://kubernetes.default.svc"
@@ -42,7 +45,10 @@ resource "kubernetes_manifest" "argocd_project_cloudnativepg" {
     }
     spec = {
       description = "CloudNativePG operator"
-      sourceRepos = ["https://cloudnative-pg.github.io/charts"]
+      sourceRepos = [
+        "https://cloudnative-pg.github.io/charts",
+        "https://git.thompson-manor.org/toast-dog/kubernetes-apps",
+      ]
       destinations = [{
         namespace = "cnpg-system"
         server    = "https://kubernetes.default.svc"
