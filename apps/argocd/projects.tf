@@ -35,6 +35,33 @@ resource "kubernetes_manifest" "argocd_project_reloader" {
   }
 }
 
+resource "kubernetes_manifest" "argocd_project_authentik" {
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "AppProject"
+    metadata = {
+      name      = "authentik"
+      namespace = "argocd"
+    }
+    spec = {
+      description = "Authentik identity provider"
+      sourceRepos = [
+        "https://charts.goauthentik.io",
+        "https://git.thompson-manor.org/toast-dog/kubernetes-apps",
+      ]
+      destinations = [{
+        namespace = "authentik"
+        server    = "https://kubernetes.default.svc"
+      }]
+      # Authentik chart creates only namespaced RBAC (Role/RoleBinding).
+      # Namespace is cluster-scoped and required for the namespace manifest.
+      clusterResourceWhitelist = [
+        { group = "", kind = "Namespace" },
+      ]
+    }
+  }
+}
+
 resource "kubernetes_manifest" "argocd_project_cloudnativepg" {
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
