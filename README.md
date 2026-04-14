@@ -70,3 +70,10 @@ export VAULT_TOKEN=$(op environment read <environment id>)
 make plan
 make apply
 ```
+
+## Related Repositories
+
+| Repo | Purpose |
+|------|---------|
+| [kubernetes-apps](https://git.thompson-manor.org/toast-dog/kubernetes-apps) | ArgoCD app-of-apps: CloudNativePG, Authentik, Atlantis |
+| [tf-authentik](https://git.thompson-manor.org/toast-dog/tf-authentik) | Authentik provider configuration (providers, outposts, applications, groups) |
