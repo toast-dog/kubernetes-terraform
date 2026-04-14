@@ -26,6 +26,8 @@ resource "vault_kv_secret_v2" "authentik" {
     secret-key                   = random_password.authentik_secret_key.result
     db-user-bootstrap-password   = random_password.authentik_db_user_bootstrap_password.result
     db-superuser-password        = random_password.authentik_db_superuser_password.result
+    # Populated manually after Authentik is deployed — see tf-authentik bootstrap steps
+    terraform-api-token          = ""
   })
 
   lifecycle {
