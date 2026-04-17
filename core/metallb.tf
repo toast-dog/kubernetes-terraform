@@ -14,12 +14,28 @@ resource "kubernetes_manifest" "metallb_ip_pool" {
   }
 }
 
-resource "kubernetes_manifest" "metallb_l2_advertisement" {
+resource "kubernetes_manifest" "metallb_bgp_peer" {
+  manifest = {
+    apiVersion = "metallb.io/v1beta2"
+    kind       = "BGPPeer"
+    metadata = {
+      name      = "opnsense"
+      namespace = "metallb-system"
+    }
+    spec = {
+      peerAddress = "192.168.30.1"
+      peerASN     = 64512
+      myASN       = 64513
+    }
+  }
+}
+
+resource "kubernetes_manifest" "metallb_bgp_advertisement" {
   manifest = {
     apiVersion = "metallb.io/v1beta1"
-    kind       = "L2Advertisement"
+    kind       = "BGPAdvertisement"
     metadata = {
-      name      = "homelab-l2advert"
+      name      = "homelab-bgp"
       namespace = "metallb-system"
     }
     spec = {

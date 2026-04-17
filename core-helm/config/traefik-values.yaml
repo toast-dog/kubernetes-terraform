@@ -6,6 +6,11 @@ service:
   spec:
     externalTrafficPolicy: Local
 
+# Run one Traefik pod per node so MetalLB (BGP mode) advertises the VIP from
+# all nodes simultaneously, enabling ECMP load distribution across the cluster.
+deployment:
+  kind: DaemonSet
+
 # Dashboard IngressRoute is managed as a kubernetes_manifest in traefik.tf
 # to support the two-route pattern required for Authentik forward auth
 ingressRoute:
