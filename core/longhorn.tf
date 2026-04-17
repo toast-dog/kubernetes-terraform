@@ -32,8 +32,9 @@ resource "kubernetes_manifest" "longhorn_ingressroute" {
           match    = "Host(`${local.longhorn_hostname}`) && PathPrefix(`/outpost.goauthentik.io/`)"
           priority = 15
           services = [{
-            name = "authentik-external"
-            port = 443
+            name      = "authentik-server"
+            namespace = "authentik"
+            port      = 80
           }]
         }
       ]

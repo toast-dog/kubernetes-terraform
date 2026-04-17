@@ -33,7 +33,7 @@ resource "kubernetes_manifest" "authentik_middleware" {
     }
     spec = {
       forwardAuth = {
-        address            = "${var.external_authentik_url}/outpost.goauthentik.io/auth/traefik"
+        address            = "http://authentik-server.authentik.svc.cluster.local/outpost.goauthentik.io/auth/traefik"
         trustForwardHeader = true
         authResponseHeaders = [
           "X-authentik-username",
@@ -51,19 +51,6 @@ resource "kubernetes_manifest" "authentik_middleware" {
         ]
       }
     }
-  }
-}
-
-# ExternalName service so Traefik can route outpost callbacks to the external Authentik instance
-resource "kubernetes_service_v1" "authentik_external" {
-  metadata {
-    name      = "authentik-external"
-    namespace = "traefik"
-  }
-
-  spec {
-    type          = "ExternalName"
-    external_name = replace(var.external_authentik_url, "https://", "")
   }
 }
 
@@ -99,8 +86,9 @@ resource "kubernetes_manifest" "traefik_dashboard" {
           match    = "Host(`${local.traefik_dashboard_host}`) && PathPrefix(`/outpost.goauthentik.io/`)"
           priority = 15
           services = [{
-            name = "authentik-external"
-            port = 443
+            name      = "authentik-server"
+            namespace = "authentik"
+            port      = 80
           }]
         }
       ]

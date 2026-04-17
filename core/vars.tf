@@ -26,11 +26,6 @@ variable "cloudflare_zones" {
 # Traefik
 # ---------------------------------------------------------------------------
 
-variable "external_authentik_url" {
-  description = "Base URL of the external Authentik instance (e.g. https://auth.example.com)"
-  type        = string
-}
-
 variable "traefik_cert_issuer" {
   description = "ClusterIssuer to use for all certificates (letsencrypt-staging or letsencrypt-prod)"
   type        = string
