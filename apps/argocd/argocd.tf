@@ -97,6 +97,47 @@ resource "kubernetes_manifest" "argocd_repo_forgejo" {
   }
 }
 
+# Authentik OIDC client secret — written to Vault by tf-authentik/apps/argocd.
+# ArgoCD reads this via the argocd-oidc Secret, referenced in the Helm values oidc.config.
+resource "kubernetes_manifest" "argocd_oidc_secret" {
+  depends_on     = [kubernetes_service_account_v1.vault_auth]
+  computed_fields = ["spec.target.template.mergePolicy", "spec.target.template.engineVersion"]
+
+  manifest = {
+    apiVersion = "external-secrets.io/v1"
+    kind       = "ExternalSecret"
+    metadata = {
+      name      = "argocd-oidc"
+      namespace = "argocd"
+    }
+    spec = {
+      refreshInterval = "1h"
+      secretStoreRef = {
+        name = "vault"
+        kind = "ClusterSecretStore"
+      }
+      target = {
+        name           = "argocd-oidc"
+        creationPolicy = "Owner"
+        template = {
+          metadata = {
+            labels = {
+              "app.kubernetes.io/part-of" = "argocd"
+            }
+          }
+        }
+      }
+      data = [{
+        secretKey = "clientSecret"
+        remoteRef = {
+          key      = "argocd/oidc"
+          property = "clientSecret"
+        }
+      }]
+    }
+  }
+}
+
 # Root app-of-apps — the only ArgoCD Application managed by Terraform.
 # Everything in kubernetes-apps/apps/ is an Application manifest; ArgoCD
 # picks them up automatically. Add a new app by creating a file in that directory.

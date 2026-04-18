@@ -8,6 +8,25 @@ configs:
   params:
     # Traefik handles TLS termination; ArgoCD server runs in HTTP mode
     server.insecure: true
+  cm:
+    oidc.config: |
+      name: Authentik
+      issuer: https://${authentik_hostname}/application/o/argocd/
+      clientID: argocd
+      clientSecret: $argocd-oidc:clientSecret
+      requestedScopes:
+        - openid
+        - profile
+        - email
+        - groups
+  rbac:
+    policy.csv: |
+      g, home_admins, role:admin
+    policy.default: role:readonly
+
+server:
+  deploymentAnnotations:
+    secret.reloader.stakater.com/reload: "argocd-oidc,argocd-secret"
 
 repoServer:
   livenessProbe:

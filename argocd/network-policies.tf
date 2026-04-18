@@ -65,8 +65,28 @@ resource "kubernetes_manifest" "netpol_argocd_allow_egress_k8s_api" {
   }
 }
 
-# repo-server fetches git repos over HTTPS or SSH. Port 443 also covers OIDC token
-# exchange if ArgoCD SSO is wired to Authentik later.
+# argocd-server reaches Authentik via the public hostname (auth.lab.toastdog.net), which
+# resolves to Traefik's MetalLB LB IP (192.168.x.x — excluded by allow-egress-external).
+# Calico evaluates egress post-DNAT: kube-proxy rewrites the LB IP to a Traefik pod IP
+# before the filter table, so namespaceSelector traefik on port 443 matches correctly.
+resource "kubernetes_manifest" "netpol_argocd_allow_egress_authentik" {
+  depends_on = [helm_release.argocd]
+  manifest = {
+    apiVersion = "networking.k8s.io/v1"
+    kind       = "NetworkPolicy"
+    metadata   = { name = "allow-egress-authentik", namespace = "argocd" }
+    spec = {
+      podSelector = { matchLabels = { "app.kubernetes.io/name" = "argocd-server" } }
+      policyTypes = ["Egress"]
+      egress = [{
+        to    = [{ namespaceSelector = { matchLabels = { "kubernetes.io/metadata.name" = "traefik" } } }]
+        ports = [{ port = 8443, protocol = "TCP" }]
+      }]
+    }
+  }
+}
+
+# repo-server fetches git repos over HTTPS or SSH.
 resource "kubernetes_manifest" "netpol_argocd_allow_egress_external" {
   depends_on = [helm_release.argocd]
   manifest = {

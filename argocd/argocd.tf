@@ -11,7 +11,8 @@ resource "helm_release" "argocd" {
   wait             = true
 
   values = [templatefile("${path.module}/config/argocd-values.yaml", {
-    argocd_hostname = local.argocd_hostname
+    argocd_hostname    = local.argocd_hostname
+    authentik_hostname = local.authentik_hostname
   })]
 }
 
