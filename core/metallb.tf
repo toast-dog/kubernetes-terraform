@@ -26,6 +26,7 @@ resource "kubernetes_manifest" "metallb_bgp_peer" {
       peerAddress = "192.168.30.1"
       peerASN     = 64512
       myASN       = 64513
+      password    = var.metallb_bgp_password
     }
   }
 }

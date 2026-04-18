@@ -7,6 +7,12 @@ variable "metallb_ip_range" {
   type        = string
 }
 
+variable "metallb_bgp_password" {
+  description = "MD5 authentication password for MetalLB BGP peering with OPNsense FRR — must match proxmox-terraform/ansible/.secrets/bgp.key"
+  type        = string
+  sensitive   = true
+}
+
 # ---------------------------------------------------------------------------
 # cert-manager
 # ---------------------------------------------------------------------------

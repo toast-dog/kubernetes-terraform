@@ -49,12 +49,16 @@ Terragrunt applies modules in dependency order automatically. `make plan` / `mak
 
 ## One-Time Setup
 
-Create `core/secrets.auto.tfvars` (gitignored — never commit it):
+Create `core/secrets.auto.tfvars` (gitignored — never commit it). A template is at `core/secrets.auto.tfvars.example`:
 
 ```hcl
 cloudflare_zones = {
   "toastdog.net" = "your-cloudflare-token-here"
 }
+
+# BGP authentication password for MetalLB <-> OPNsense FRR peering (TCP MD5)
+# Must match proxmox-terraform/ansible/.secrets/bgp.key
+metallb_bgp_password = "your-bgp-password-here"  # generate with: openssl rand -base64 32
 
 # Uncomment once staging certs are verified working
 # traefik_cert_issuer = "letsencrypt-prod"
