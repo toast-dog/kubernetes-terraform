@@ -33,8 +33,11 @@ resource "kubernetes_manifest" "authentik_middleware" {
     }
     spec = {
       forwardAuth = {
-        address            = "http://authentik-server.authentik.svc.cluster.local/outpost.goauthentik.io/auth/traefik"
+        address            = "https://authentik-server.authentik.svc.cluster.local:443/outpost.goauthentik.io/auth/traefik"
         trustForwardHeader = true
+        tls = {
+          caSecret = "vault-internal-ca"
+        }
         authResponseHeaders = [
           "X-authentik-username",
           "X-authentik-groups",

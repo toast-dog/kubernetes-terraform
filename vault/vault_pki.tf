@@ -281,7 +281,8 @@ resource "kubernetes_manifest" "vault_tls_cert" {
 resource "kubernetes_secret_v1" "vault_internal_ca" {
   # vault: ServersTransport for Traefik → Vault backend
   # external-secrets: ClusterSecretStore caProvider
-  for_each   = toset(["vault", "external-secrets"])
+  # traefik: mounted into Traefik pods for ForwardAuth CA verification
+  for_each   = toset(["vault", "external-secrets", "traefik"])
   depends_on = [vault_pki_secret_backend_root_cert.root]
 
   metadata {
