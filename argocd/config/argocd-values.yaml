@@ -9,6 +9,7 @@ configs:
     # Traefik handles TLS termination; ArgoCD server runs in HTTP mode
     server.insecure: true
   cm:
+    admin.enabled: "false"
     oidc.config: |
       name: Authentik
       issuer: https://${authentik_hostname}/application/o/argocd/
