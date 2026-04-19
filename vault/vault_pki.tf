@@ -313,8 +313,8 @@ resource "kubernetes_manifest" "vault_servers_transport" {
     kind       = "ServersTransport"
     metadata   = { name = "vault-https", namespace = "vault" }
     spec = {
-      serverName     = "vault.vault.svc.cluster.local"
-      rootCAsSecrets = ["vault-internal-ca"]
+      serverName = "vault.vault.svc.cluster.local"
+      rootCAs    = [{ secret = "vault-internal-ca" }]
     }
   }
 }
