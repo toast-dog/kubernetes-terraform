@@ -62,6 +62,40 @@ resource "kubernetes_manifest" "argocd_project_authentik" {
   }
 }
 
+resource "kubernetes_manifest" "argocd_project_metrics_server" {
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "AppProject"
+    metadata = {
+      name      = "metrics-server"
+      namespace = "argocd"
+    }
+    spec = {
+      description = "Kubernetes metrics-server — powers kubectl top and HPA"
+      sourceRepos = [
+        "https://kubernetes-sigs.github.io/metrics-server/",
+        "https://git.thompson-manor.org/toast-dog/kubernetes-apps",
+      ]
+      destinations = [
+        {
+          namespace = "metrics-server"
+          server    = "https://kubernetes.default.svc"
+        },
+        {
+          namespace = "kube-system"
+          server    = "https://kubernetes.default.svc"
+        },
+      ]
+      clusterResourceWhitelist = [
+        { group = "",                          kind = "Namespace"          },
+        { group = "rbac.authorization.k8s.io", kind = "ClusterRole"        },
+        { group = "rbac.authorization.k8s.io", kind = "ClusterRoleBinding" },
+        { group = "apiregistration.k8s.io",    kind = "APIService"         },
+      ]
+    }
+  }
+}
+
 resource "kubernetes_manifest" "argocd_project_cloudnativepg" {
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
