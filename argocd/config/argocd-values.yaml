@@ -25,10 +25,17 @@ configs:
       g, home_admins, role:admin
     policy.default: role:readonly
 
+redis-ha:
+  enabled: true
+
+controller:
+  replicas: 2
+
 server:
   deploymentAnnotations:
     secret.reloader.stakater.com/reload: "argocd-oidc,argocd-secret"
 
 repoServer:
+  replicas: 2
   livenessProbe:
     timeoutSeconds: 10
