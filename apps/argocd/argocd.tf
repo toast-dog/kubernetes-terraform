@@ -7,6 +7,37 @@ resource "kubernetes_service_account_v1" "vault_auth" {
   }
 }
 
+resource "kubernetes_manifest" "argocd_webhook_secret" {
+  depends_on = [vault_kv_secret_v2.argocd_webhook]
+
+  manifest = {
+    apiVersion = "external-secrets.io/v1"
+    kind       = "ExternalSecret"
+    metadata = {
+      name      = "argocd-webhook"
+      namespace = "argocd"
+    }
+    spec = {
+      refreshInterval = "1h"
+      secretStoreRef = {
+        name = "vault"
+        kind = "ClusterSecretStore"
+      }
+      target = {
+        name           = "argocd-secret"
+        creationPolicy = "Merge"
+      }
+      data = [{
+        secretKey = "webhook.gitea.secret"
+        remoteRef = {
+          key      = "argocd/webhook"
+          property = "secret"
+        }
+      }]
+    }
+  }
+}
+
 resource "kubernetes_manifest" "argocd_admin_secret" {
   depends_on = [vault_kv_secret_v2.argocd]
 

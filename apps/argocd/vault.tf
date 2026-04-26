@@ -15,3 +15,20 @@ resource "vault_kv_secret_v2" "argocd" {
     ignore_changes = [data_json]
   }
 }
+
+resource "random_password" "argocd_webhook" {
+  length  = 32
+  special = false
+}
+
+resource "vault_kv_secret_v2" "argocd_webhook" {
+  mount     = "secret"
+  name      = "argocd/webhook"
+  data_json = jsonencode({
+    secret = random_password.argocd_webhook.result
+  })
+
+  lifecycle {
+    ignore_changes = [data_json]
+  }
+}
