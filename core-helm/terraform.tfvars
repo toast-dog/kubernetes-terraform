@@ -1,4 +1,4 @@
-metallb_version = "0.15.3"  # renovate: datasource=helm registryUrl=https://metallb.github.io/metallb depName=metallb
+metallb_version = "0.16.1"  # renovate: datasource=helm registryUrl=https://metallb.github.io/metallb depName=metallb
 
 cert_manager_version = "v1.20.2"  # renovate: datasource=docker depName=quay.io/jetstack/charts/cert-manager
 
