@@ -2,7 +2,7 @@ metallb_version = "0.16.1"  # renovate: datasource=helm registryUrl=https://meta
 
 cert_manager_version = "v1.20.2"  # renovate: datasource=docker depName=quay.io/jetstack/charts/cert-manager
 
-traefik_version          = "40.0.0"  # renovate: datasource=helm registryUrl=https://traefik.github.io/charts depName=traefik
+traefik_version          = "40.2.0"  # renovate: datasource=helm registryUrl=https://traefik.github.io/charts depName=traefik
 traefik_load_balancer_ip = "192.168.30.160"
 
 longhorn_version       = "1.11.2"  # renovate: datasource=helm registryUrl=https://charts.longhorn.io depName=longhorn
