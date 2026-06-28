@@ -5,9 +5,7 @@
   ],
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Renovate Dashboard",
-  "assignees": [
-    "mitchellth"
-  ],
+  "assignees": [],
   "labels": [
     "renovate"
   ],
