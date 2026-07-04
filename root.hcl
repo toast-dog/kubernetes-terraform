@@ -98,7 +98,7 @@ generate "versions" {
       required_providers {
         helm = {
           source  = "hashicorp/helm"
-          version = "~> 3.1.1"  # renovate: datasource=terraform-provider depName=hashicorp/helm
+          version = "~> 3.2.0"  # renovate: datasource=terraform-provider depName=hashicorp/helm
         }
         kubernetes = {
           source  = "hashicorp/kubernetes"
