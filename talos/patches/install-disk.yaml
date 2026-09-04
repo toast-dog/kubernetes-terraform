@@ -1,9 +1,8 @@
-# Proxmox attaches disks via virtio0, which the guest kernel names /dev/vda — the
-# provider's default guess (/dev/sda) doesn't exist on these VMs and silently fails
-# the install. Confirmed live via `talosctl get blockdevices --insecure`.
-# image here drives the *initial* install version — talos_machine's own image argument
-# only governs drift-detection for later upgrades, not the first install.
-machine:
-  install:
-    disk: /dev/vda
-    image: ${talos_image}
+# Talos v1.14 replaced the old machine.install block
+apiVersion: v1alpha1
+kind: UnattendedInstallConfig
+installer:
+  image: ${talos_image}
+provisioning:
+  diskSelector:
+    match: disk.dev_path == "/dev/vda"
