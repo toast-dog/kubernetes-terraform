@@ -26,7 +26,7 @@ data "talos_machine_configuration" "worker" {
 }
 
 # Generated locally from machine_secrets — no live call, no cycle risk. Used only for
-# nodes in talos_upgraded_ips.
+# nodes in talos_joined_ips.
 ephemeral "talos_cluster_kubeconfig" "for_drain" {
   cluster_name    = var.talos_cluster_name
   machine_secrets = talos_machine_secrets.cluster.machine_secrets
@@ -35,7 +35,7 @@ ephemeral "talos_cluster_kubeconfig" "for_drain" {
 
 # image is always set (so a fresh install uses the right version, not the provider's own
 # unrelated default) — only drain_on_upgrade/kubeconfig_wo are gated per-node on
-# talos_upgraded_ips, since a node's first install has no live API to drain against.
+# talos_joined_ips, since a node's first install has no live API to drain against.
 
 # Applied first — workers' cert-signing needs a live control plane to dial (see cluster.tf).
 resource "talos_machine" "controlplane" {
@@ -47,8 +47,8 @@ resource "talos_machine" "controlplane" {
   image                            = var.talos_image
   ignore_kubernetes_upgrade_drift  = true # talos_cluster.kubernetes_version stays the single source of truth for k8s upgrades
 
-  drain_on_upgrade = contains(var.talos_upgraded_ips, each.value)
-  kubeconfig_wo    = contains(var.talos_upgraded_ips, each.value) ? ephemeral.talos_cluster_kubeconfig.for_drain.kubeconfig_raw : null
+  drain_on_upgrade = contains(var.talos_joined_ips, each.value)
+  kubeconfig_wo    = contains(var.talos_joined_ips, each.value) ? ephemeral.talos_cluster_kubeconfig.for_drain.kubeconfig_raw : null
 
   # Wipes and leaves etcd cleanly when a node is removed from the IP list.
   on_destroy = {
@@ -69,8 +69,8 @@ resource "talos_machine" "workers" {
   image                            = var.talos_image
   ignore_kubernetes_upgrade_drift  = true
 
-  drain_on_upgrade = contains(var.talos_upgraded_ips, each.value)
-  kubeconfig_wo    = contains(var.talos_upgraded_ips, each.value) ? ephemeral.talos_cluster_kubeconfig.for_drain.kubeconfig_raw : null
+  drain_on_upgrade = contains(var.talos_joined_ips, each.value)
+  kubeconfig_wo    = contains(var.talos_joined_ips, each.value) ? ephemeral.talos_cluster_kubeconfig.for_drain.kubeconfig_raw : null
 
   depends_on = [talos_cluster.bootstrap]
 

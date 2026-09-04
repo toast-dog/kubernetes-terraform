@@ -39,8 +39,8 @@ variable "talosconfig_path" {
   default     = null
 }
 
-variable "talos_upgraded_ips" {
-  description = "IPs of nodes past their first apply — add once bootstrapped to enable graceful drain on future upgrades."
+variable "talos_joined_ips" {
+  description = "IPs of nodes already running in the cluster — add once joined to enable graceful drain on future upgrades."
   type        = list(string)
   default     = []
 }
