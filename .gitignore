@@ -17,7 +17,6 @@ backend.tf
 .terraform-state/
 
 # Secrets
-secrets.auto.tfvars
 vault-init.json
 homelab-root-ca.crt
 

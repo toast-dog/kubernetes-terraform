@@ -1,0 +1,11 @@
+# Control-plane VIP — config_patches replaces the whole interface entry, not just the
+# vip field, so dhcp must be listed explicitly here too or the interface loses its address.
+# Interface name is ens18 (systemd predictable naming on Proxmox virtio NICs), not eth0 —
+# confirmed live via `talosctl get links`.
+machine:
+  network:
+    interfaces:
+      - interface: ens18
+        dhcp: true
+        vip:
+          ip: ${talos_vip}

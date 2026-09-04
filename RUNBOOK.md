@@ -9,30 +9,32 @@ End-to-end process for going from a blank Kubernetes cluster to the current depl
 | Component | Namespace | Purpose |
 |-----------|-----------|---------|
 | MetalLB | `metallb-system` | Assigns real IPs from your LAN pool to `LoadBalancer` services |
-| cert-manager | `cert-manager` | Issues and renews TLS certificates via Let's Encrypt (Cloudflare DNS-01) |
+| cert-manager | `cert-manager` | Issues and renews TLS certificates — Let's Encrypt (Cloudflare DNS-01) for public certs, a self-signed internal CA for internal-only certs |
 | Traefik | `traefik` | Ingress controller — routes external HTTPS traffic into the cluster |
 | Longhorn | `longhorn-system` | Distributed block storage — provides persistent volumes for stateful workloads |
-| Vault | `vault` | Secrets management — the single source of truth for all cluster secrets |
-| External Secrets Operator (ESO) | `external-secrets` | Bridges Vault and Kubernetes — reads secrets from Vault, creates native `Secret` objects |
+| External Secrets Operator (ESO) | `external-secrets` | Bridges 1Password and Kubernetes — reads secrets from a 1Password vault via the SDK provider, creates native `Secret` objects |
+| trust-manager | `cert-manager` | Propagates the internal CA's public cert to namespaces that need to trust it (currently just `traefik`), staying in sync as the CA renews |
 | ArgoCD | `argocd` | GitOps controller for declarative app deployments |
 
 ### Why module order matters
 
-- **core-helm before core** — Helm installs CRDs. The kubernetes provider validates CRD-backed resources (IngressRoutes, ClusterIssuers, IPAddressPools) against the live cluster at plan time, so CRDs must exist first.
+- **core-helm before core** — Helm installs CRDs. The kubernetes provider validates CRD-backed resources (IngressRoutes, ClusterIssuers, IPAddressPools) against the live cluster at plan time, so CRDs must exist first. This also means ESO's Helm release lives in `core-helm/` — its `ClusterSecretStore` (a CRD-backed resource) lives in `core/`.
 - **MetalLB before Traefik** — Traefik's Helm release needs a `LoadBalancer` IP. Without MetalLB's pool, the IP never gets assigned and Helm's `wait=true` would block indefinitely. Traefik is deployed with `wait=false` and gets its IP once the MetalLB pool is created in the core/ step.
-- **vault-helm before vault** — The Vault provider authenticates against Vault's API at plan time. Vault must be deployed, initialized, and unsealed before vault/ can apply.
-- **Longhorn before Vault** — Vault HA runs 3 pods, each storing the Raft database on a PVC. Longhorn provides those PVCs with replication across nodes.
+- **trust-manager propagates the internal CA** — `core/internal-ca.tf`'s self-signed root Certificate is issued by cert-manager, then a `Bundle` resource (trust-manager, installed in `core-helm/`) continuously syncs its public cert into the `traefik` namespace. This is a single-pass apply — no wait step needed, since trust-manager's controller reconciles asynchronously and re-syncs automatically whenever cert-manager renews or rotates the CA (see rotationPolicy: Always on the root Certificate).
 
 ---
 
 ## Module Layout
 
 ```
-core-helm/    Helm releases: MetalLB, cert-manager, Traefik, Longhorn
-core/         CRD resources: IngressRoutes, ClusterIssuers, MetalLB pool, NetworkPolicies
+core-helm/    Helm releases: MetalLB, cert-manager, Traefik, Longhorn, External Secrets Operator, trust-manager
+core/         CRD resources: IngressRoutes, ClusterIssuers, MetalLB pool, ClusterSecretStore,
+              self-signed internal CA, NetworkPolicies
 argocd/       ArgoCD Helm release + IngressRoute         (depends on: core)
-vault-helm/   Vault + ESO Helm releases, unseal CronJob  (depends on: core)
-vault/        Vault provider resources: KV, auth, ESO    (depends on: vault-helm)
+apps/argocd/  ArgoCD's ExternalSecrets + root app-of-apps (depends on: argocd)
+secrets/      Long-lived 1Password items (argocd, authentik) — no dependencies, and
+              deliberately excluded from `make wipe-state` (see that module's
+              terragrunt.hcl). Not tied to the cluster's lifecycle at all.
 ```
 
 Terragrunt applies modules in dependency order automatically. `make plan` / `make apply` run all modules; individual modules can be targeted with `cd <module> && terragrunt plan`.
@@ -44,167 +46,64 @@ Terragrunt applies modules in dependency order automatically. `make plan` / `mak
 - Terragrunt installed locally
 - A running Kubernetes cluster with kubeconfig at `~/.kube/config`
 - Cloudflare API tokens with **Zone:DNS:Edit** permission for each DNS zone
+- A 1Password vault dedicated to this cluster's secrets, and a Service Account token scoped read-only to it (see One-Time Setup below)
 
 ---
 
 ## One-Time Setup
 
-Create `core/secrets.auto.tfvars` (gitignored — never commit it). A template is at `core/secrets.auto.tfvars.example`:
+**1Password**: in the 1Password app/web UI, create a vault dedicated to this cluster. Note its UUID (vault "..." menu → Vault Settings) and set it as `onepassword_vault_id` in `root.hcl`.
 
-```hcl
-cloudflare_zones = {
-  "toastdog.net" = "your-cloudflare-token-here"
-}
+Under Developer → Service Accounts, create **two**:
+- A read+write one, scoped to that vault only. Export its token as `OP_SERVICE_ACCOUNT_TOKEN` before running any `terragrunt`/`make` command — this is what Terraform's own `onepassword` provider authenticates with (never stored in a file; ideally exported via `op read`/`op run` rather than pasted).
+- A read-only one, scoped to that vault only. Its token doesn't get exported anywhere — it gets stored as a field value in the `cluster-bootstrap` item below, which Terraform then copies into a runtime Secret for ESO to use in-cluster.
 
-# BGP authentication password for MetalLB <-> OPNsense FRR peering (TCP MD5)
-# Must match proxmox-terraform/ansible/.secrets/bgp.key
-metallb_bgp_password = "your-bgp-password-here"  # generate with: openssl rand -base64 32
+There's no local secrets file — `core/`'s `onepassword` provider reads externally-sourced bootstrap
+credentials directly from a `cluster-bootstrap` item (see `core/bootstrap-secrets.tf`), instead of
+from `core/secrets.auto.tfvars` on disk. Create that item by hand, once, in the 1Password app/web
+UI, with these sections and fields:
 
-# Uncomment once staging certs are verified working
-# traefik_cert_issuer = "letsencrypt-prod"
-```
+| Section | Field | Value |
+|---------|-------|-------|
+| `cloudflare` | `toastdog.net` (one field per DNS zone, labeled with the zone name) | Cloudflare API token with `Zone:DNS:Edit` permission for that zone |
+| `metallb` | `bgp-password` | MD5 auth password for MetalLB↔OPNsense FRR peering — must match `proxmox-terraform/ansible/.secrets/bgp.key`; generate with `openssl rand -base64 32` |
+| `external-secrets` | `eso-token` | The read-only Service Account token created above |
 
 ---
 
-## Phase 1 — Bootstrap the Cluster
-
-Runs all automated steps in order. Prompts once for confirmation, then pauses to let you restore the wildcard TLS cert backup (avoids burning a Let's Encrypt rate limit).
+## Bootstrap
 
 ```bash
+export OP_SERVICE_ACCOUNT_TOKEN=<your-service-account-token>
 make bootstrap
 ```
 
-**What it does (in order):**
+A single non-interactive `terragrunt run --all apply` — Terragrunt walks the dependency graph declared in each module's `terragrunt.hcl` (`core` → `core-helm`, `argocd` → `core`, `apps/argocd` → `argocd`) and fully applies each module before its dependents even begin planning, which is what lets CRD-backed resources in later modules validate against a live cluster. `secrets/` has no dependencies and applies independently. No manual staging needed.
 
-1. `core-helm/` — installs MetalLB, cert-manager, Traefik, Longhorn Helm charts
-2. Pauses — prompts you to restore the wildcard TLS cert backup:
-   ```bash
-   kubectl apply -f ../wildcard-tls-backup.yaml
-   ```
-   Skip this step on a first-ever build. Restoring the backup prevents cert-manager from issuing a new cert (5/week Let's Encrypt rate limit).
-3. `core/` — applies MetalLB pool, cert-manager ClusterIssuers, Traefik IngressRoutes, NetworkPolicies
-4. `argocd/` — deploys ArgoCD and its IngressRoute
-5. `vault-helm/` — deploys Vault, ESO, the unseal CronJob, and the Vault IngressRoute
+**What it applies, in the order Terragrunt resolves it:**
 
-After step 5, Vault pods will start but remain **sealed** — this is expected.
+1. `core-helm/` — installs MetalLB, cert-manager, Traefik, Longhorn, External Secrets Operator, trust-manager Helm charts
+2. `core/` — restores the wildcard TLS cert backup automatically if one exists at `../wildcard-tls-backup.yaml` (prevents cert-manager from burning a Let's Encrypt rate-limit slot re-issuing on every rebuild; a no-op, no-risk skip on a genuine first-ever build with no backup yet), then applies MetalLB pool, cert-manager ClusterIssuers (bootstrap self-signed issuer + root Certificate), the trust-manager `Bundle` that propagates the CA into `traefik`, Traefik IngressRoutes, the 1Password `ClusterSecretStore`, NetworkPolicies
+3. `argocd/` — deploys ArgoCD and its IngressRoute
+4. `apps/argocd/` — wires up ArgoCD's `ExternalSecret`s, creates ArgoCD's root app-of-apps (which starts ArgoCD syncing `kubernetes-apps` automatically from here on)
+5. `secrets/` (any point — no dependencies) — creates the `argocd` and `authentik` 1Password items if they don't already exist
 
 **Verify Helm charts are running:**
 ```bash
 kubectl get pods -n metallb-system
-kubectl get pods -n cert-manager
+kubectl get pods -n cert-manager     # cert-manager + trust-manager pods
 kubectl get pods -n traefik
 kubectl get pods -n longhorn-system
 kubectl get pods -n argocd
-kubectl get pods -n vault           # 0/1 expected — sealed
 kubectl get pods -n external-secrets
 ```
 
----
+trust-manager may take a few seconds after `core/` applies to sync the CA into `traefik` — confirm with `kubectl get secret internal-ca -n traefik`.
 
-## Phase 2 — Initialize and Unseal Vault (Manual)
-
-Vault ships sealed — it has no knowledge of its master key until initialized. Initialization happens once and generates the unseal keys and root token. **Save these to 1Password immediately — they cannot be recovered.**
-
-### Initialize
+**Install the homelab root CA** (cert-manager's self-signed root, replaces the old Vault-issued one — a one-time step per device, 10-year TTL):
 
 ```bash
-kubectl exec -n vault vault-0 -- vault operator init \
-  -key-shares=5 -key-threshold=3 -format=json > vault-init.json
-```
-
-`vault-init.json` is gitignored. Open it and save the unseal keys and root token to 1Password.
-
-### Store unseal keys
-
-The auto-unseal CronJob (deployed in Phase 1) reads keys from this Secret every minute. Create it now so future restarts are handled automatically.
-
-```bash
-kubectl create secret generic vault-unseal-keys -n vault \
-  --from-literal=key1=$(jq -r '.unseal_keys_b64[0]' vault-init.json) \
-  --from-literal=key2=$(jq -r '.unseal_keys_b64[1]' vault-init.json) \
-  --from-literal=key3=$(jq -r '.unseal_keys_b64[2]' vault-init.json)
-```
-
-### Wait for auto-unseal
-
-The CronJob runs every minute and unseals all pods. After about a minute:
-
-```bash
-kubectl get pods -n vault   # all 3 should become 1/1
-```
-
-### Export the root token
-
-```bash
-export VAULT_TOKEN=$(jq -r '.root_token' vault-init.json)
-```
-
-### About the auto-unseal CronJob
-
-The CronJob approach has a security trade-off: unseal keys live in a Kubernetes Secret (base64 in etcd). Anyone with sufficient RBAC or etcd access can read them. Acceptable for a homelab; not appropriate for production.
-
-**Proper alternatives:**
-
-| Option | How it works | Best for |
-|--------|-------------|----------|
-| **Cloud KMS** | Vault calls AWS KMS / GCP Cloud KMS / Azure Key Vault to unwrap the master key on startup | Environments with a cloud provider |
-| **Transit Vault** | A second small Vault instance holds the unseal key for the primary via the Transit secrets engine | Air-gapped or on-prem |
-| **HSM** | The master key never leaves dedicated hardware | High-security on-prem |
-
-**Migrating to auto-unseal (e.g. cloud KMS):**
-1. Create a KMS key in your cloud provider.
-2. Add a `seal` stanza to `vault-values.yaml` pointing to the key.
-3. While Vault is running and unsealed, run `vault operator migrate` — re-encrypts the master key without downtime or data loss.
-4. Delete the `vault-unseal-keys` Secret and remove the CronJob from `vault-helm/kubernetes.tf`.
-5. Restart Vault pods — they unseal automatically via KMS.
-
----
-
-## Phase 3 — Vault PKI + TLS Bootstrap
-
-With `VAULT_TOKEN` exported, run:
-
-```bash
-make bootstrap-vault
-```
-
-This runs four steps automatically, with a wait between each:
-
-**Step [1/4] — vault Apply 1 (`bootstrap_mode=true`)**
-
-Configures Vault internals and sets up the PKI CA:
-- KV v2 secrets engine at `secret/`
-- Kubernetes auth method + config (allows pods to authenticate using their service account tokens)
-- Root CA (`pki` mount, 10-year) and Intermediate CA (`pki_int` mount, 5-year)
-- ACME protocol enabled on `pki_int` (for future Proxmox/OPNsense cert issuance)
-- cert-manager `vault-internal` ClusterIssuer (pointing to Vault HTTP at this stage)
-- `vault-tls` Certificate resource — cert-manager issues it immediately via the ClusterIssuer
-
-**Step [2/4] — Wait for `vault-tls` Secret**
-
-Polls until cert-manager has issued the `vault-tls` Secret in the vault namespace (~30s). This secret contains the TLS cert and key that Vault pods will use.
-
-**Step [3/4] — vault-helm Apply 2 (enables Vault TLS)**
-
-- Switches Vault's listener from HTTP to HTTPS (mounts the `vault-tls` Secret into pods)
-- Updates the IngressRoute to proxy HTTPS to Vault via the homelab CA (`ServersTransport`)
-- Updates the unseal CronJob to connect over HTTPS
-- Deletes all Vault pods (OnDelete update strategy) — they restart with TLS enabled
-- Waits up to 5 minutes for the unseal CronJob to re-unseal all pods
-- Waits for Vault to accept authenticated requests via the ingress before proceeding
-
-**Step [4/4] — vault Apply 2**
-
-- Switches the `vault-internal` ClusterIssuer from HTTP to HTTPS + caBundle
-- Creates `vault-internal-ca` Secrets in each configured namespace (used by ESO `SecretStore` resources to verify Vault's TLS cert)
-
-**After bootstrap-vault completes — install the homelab root CA**
-
-Vault is now the cluster's internal CA. Export the root cert and add it to your trust stores:
-
-```bash
-# Export root CA
-curl -s https://vault.lab.toastdog.net/v1/pki/ca/pem > homelab-root-ca.crt
+kubectl get secret internal-ca-root -n cert-manager -o jsonpath='{.data.ca\.crt}' | base64 -d > homelab-root-ca.crt
 
 # Linux (Debian/Ubuntu)
 sudo cp homelab-root-ca.crt /usr/local/share/ca-certificates/homelab-root-ca.crt
@@ -216,8 +115,6 @@ sudo update-ca-certificates
 # macOS: open homelab-root-ca.crt → Keychain Access → set to Always Trust
 ```
 
-This is a one-time step per device. The root CA has a 10-year TTL so it won't need to be reinstalled.
-
 ---
 
 ## Verification
@@ -228,29 +125,22 @@ kubectl get ingressroute -A
 
 # Certificates issued (may take a few minutes)
 kubectl get certificate -n traefik
+kubectl get certificate -n cert-manager   # internal-ca-root
 
-# Vault cluster healthy
-kubectl get pods -n vault        # all 3 should be 1/1
-
-# ESO ClusterSecretStore connected to Vault
-kubectl get clustersecretstore
+# ESO ClusterSecretStore connected to 1Password
+kubectl get clustersecretstore onepassword
 ```
 
 ### End-to-end secret sync test
 
-ESO uses a single `ClusterSecretStore` named `vault`. The only per-namespace requirement is a `vault-auth` ServiceAccount (which app Helm charts or ArgoCD Applications create). No Terraform changes are needed when adding new namespaces.
+ESO uses a single `ClusterSecretStore` named `onepassword`, backed by the 1Password vault set in `root.hcl`. No per-namespace Terraform changes are needed when adding new namespaces — just reference the `onepassword` store by name.
 
 ```bash
-# Write a test secret to Vault
-NAMESPACE=<namespace>
-kubectl exec -n vault vault-0 -- sh -c \
-  "VAULT_CACERT=/vault/userconfig/vault-tls/ca.crt VAULT_TOKEN=$VAULT_TOKEN \
-   vault kv put secret/${NAMESPACE}/test foo=bar"
-
-# Create the vault-auth SA ESO will use to authenticate
-kubectl create serviceaccount vault-auth -n ${NAMESPACE}
+# Create a test item in 1Password (web UI/app), vault = the cluster's dedicated vault,
+# title "test-item", section "credentials", field "foo" = "bar"
 
 # Create an ExternalSecret referencing the ClusterSecretStore
+NAMESPACE=<namespace>
 kubectl apply -f - <<EOF
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -260,15 +150,14 @@ metadata:
 spec:
   refreshInterval: 1m
   secretStoreRef:
-    name: vault
+    name: onepassword
     kind: ClusterSecretStore
   target:
     name: test-secret
   data:
     - secretKey: foo
       remoteRef:
-        key: ${NAMESPACE}/test
-        property: foo
+        key: test-item/credentials/foo
 EOF
 
 # Should show SecretSynced
@@ -280,7 +169,7 @@ kubectl get secret test-secret -n ${NAMESPACE} -o jsonpath='{.data.foo}' | base6
 # Clean up
 kubectl delete externalsecret test-secret -n ${NAMESPACE}
 kubectl delete secret test-secret -n ${NAMESPACE}
-kubectl delete serviceaccount vault-auth -n ${NAMESPACE}
+# (delete the test-item from 1Password too)
 ```
 
 ---
@@ -289,17 +178,17 @@ kubectl delete serviceaccount vault-auth -n ${NAMESPACE}
 
 ### Routine plan/apply
 
-The vault provider authenticates against Vault's API at plan time, so `VAULT_TOKEN` is always required:
+The onepassword provider authenticates via the `OP_SERVICE_ACCOUNT_TOKEN` environment variable, so it's always required:
 
 ```bash
-export VAULT_TOKEN=<root-token>
+export OP_SERVICE_ACCOUNT_TOKEN=<your-service-account-token>
 make plan
 make apply
 ```
 
 **Tip:** use the 1Password CLI to avoid pasting the token manually:
 ```bash
-export VAULT_TOKEN=$(op environment read <environment id>)
+export OP_SERVICE_ACCOUNT_TOKEN=$(op read "op://<vault>/<item>/<field>")
 make plan
 make apply
 ```
@@ -307,19 +196,20 @@ make apply
 ### Adding a new service
 
 1. Create `<name>.tf` in the appropriate module with the `helm_release` and CRD resources
-2. If the service needs Vault secrets, ensure it creates a `vault-auth` ServiceAccount in its namespace — no Terraform changes required
-3. Add variables to the module's `vars.tf` and values to `terraform.tfvars`
-4. Run a normal apply
+2. If the service needs 1Password-backed secrets, write `ExternalSecret` resources referencing `secretStoreRef: { name: onepassword, kind: ClusterSecretStore }` — no Terraform changes required in `core/`
+3. If it needs a new long-lived secret (a generated password, not something manually supplied), add an `onepassword_item` resource to `secrets/` rather than to the app's own module — see `secrets/onepassword.tf` for the pattern (and why: that module's state is deliberately never wiped)
+4. Add variables to the module's `vars.tf` and values to `terraform.tfvars`
+5. Run a normal apply
 
-### After a node/pod restart
+### Rebuilding the cluster
 
-The auto-unseal CronJob runs every minute and unseals any sealed pods automatically. No manual action needed.
+`make wipe-state` only clears state for `core-helm`, `core`, `argocd`, and `apps/*` — it deliberately leaves `secrets/` alone. The `argocd` and `authentik` 1Password items aren't tied to any particular cluster instance, so there's nothing to reset there: re-running `make bootstrap` against a freshly rebuilt cluster will find those items already exist and just reuse them (`ignore_changes` means their values are left untouched). Don't run `rm -rf .terraform-state` directly — it would wipe `secrets/` too and risk Terraform creating duplicate 1Password items on the next apply.
 
 ### Switching to production TLS certificates
 
 Once staging certificates are verified working (browser shows an invalid cert warning, not a connection error):
 
-1. Add to `core/secrets.auto.tfvars`:
+1. Set in `core/terraform.tfvars`:
    ```hcl
    traefik_cert_issuer = "letsencrypt-prod"
    ```
@@ -329,7 +219,7 @@ Once staging certificates are verified working (browser shows an invalid cert wa
    ```
 3. Apply:
    ```bash
-   export VAULT_TOKEN=<root-token>
+   export OP_SERVICE_ACCOUNT_TOKEN=<your-service-account-token>
    make plan
    make apply
    ```
