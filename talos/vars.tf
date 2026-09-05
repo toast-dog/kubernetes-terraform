@@ -23,14 +23,19 @@ variable "talos_image" {
   type        = string
 }
 
-variable "talos_control_plane_ips" {
-  description = "IPs of the control-plane nodes — manually maintained so a node can be gracefully removed from the cluster before its VM is destroyed, and vice versa for adding one."
-  type        = list(string)
+variable "talos_nodes" {
+  description = "Every cluster node, keyed by hostname — manually maintained so a node can be gracefully removed from the cluster before its VM is destroyed, and vice versa for adding one. role is \"controlplane\" or \"worker\"; disk and interface are per-node since hardware isn't guaranteed uniform."
+  type = map(object({
+    ip        = string
+    role      = string
+    disk      = string
+    interface = string
+  }))
 }
 
-variable "talos_worker_ips" {
-  description = "IPs of the worker nodes — manually maintained, same reasoning as talos_control_plane_ips."
-  type        = list(string)
+variable "talos_bootstrap_node" {
+  description = "Hostname (a key in talos_nodes) of the control-plane node talos_cluster.bootstrap and talos_cluster_kubeconfig target directly — a real node IP, never the VIP. Doesn't matter which one, just needs to stay the same one rather than shifting implicitly."
+  type        = string
 }
 
 variable "talosconfig_path" {

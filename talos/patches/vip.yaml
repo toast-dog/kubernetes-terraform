@@ -5,7 +5,7 @@
 machine:
   network:
     interfaces:
-      - interface: ens18
+      - interface: ${talos_interface}
         dhcp: true
         vip:
           ip: ${talos_vip}

@@ -5,4 +5,4 @@ installer:
   image: ${talos_image}
 provisioning:
   diskSelector:
-    match: disk.dev_path == "/dev/vda"
+    match: disk.dev_path == "${talos_disk}"
